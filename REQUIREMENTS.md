@@ -1,6 +1,8 @@
 # PhotonPigeon: Technical Requirements Specification
 
 Companion docs: `DESIGN.md` (product and UX), `SYSTEM.md` (feasibility, architecture, Phase 0, implementation plan).
+
+> **Update (2026-10-03):** AC0 (the Phase 0 gate) failed on Photon Cloud (Pro). Requirements that depend on Photon carrying GamePigeon cards (F1 to F3, F5 to F7, F11) need re-baselining against whichever provider is chosen. See `PHASE0_FINDINGS.md`.
 Scope: hackathon MVP. **Selected architecture:** Photon Spectrum Cloud + GamePigeon wire-protocol interop (SYSTEM.md §1.5, option E). **MVP games:** Four in a Row (Connect Four) first, then Word Hunt and Anagrams. Harder games (Sea Battle, Word Bites, Chess, Checkers, Gomoku) are stretch ideas with no requirements yet.
 
 ## Conventions

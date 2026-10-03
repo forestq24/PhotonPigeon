@@ -3,6 +3,8 @@
 > An iMessage agent, built on Photon Spectrum, that plays GamePigeon games against a real person.
 
 Status: **Pre-implementation design.** Everything depends on the outcome of **Phase 0** (see `SYSTEM.md` §2).
+
+> **Update (2026-10-03):** Phase 0 has run. Photon Cloud (Pro) blocked GamePigeon cards in both directions, reading and sending, so this document describes the original Photon-based plan. See `PHASE0_FINDINGS.md` for the results and the open decision on a provider.
 Companion docs: `SYSTEM.md` (architecture, feasibility, implementation plan) and `REQUIREMENTS.md` (requirement IDs and acceptance criteria).
 
 Confidence labels used throughout:

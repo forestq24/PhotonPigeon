@@ -1,0 +1,11 @@
+node_modules
+.env
+.env.local
+dist
+*.log
+.DS_Store
+
+# Phase 0 spike output (raw payloads contain player IDs and phone numbers)
+spike/fixtures/
+data/
+logs/

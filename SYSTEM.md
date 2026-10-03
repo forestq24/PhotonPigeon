@@ -1,6 +1,8 @@
 # PhotonPigeon: System Architecture
 
 Companion docs: `DESIGN.md` (product and UX), `REQUIREMENTS.md` (requirement IDs and acceptance criteria).
+
+> **Update (2026-10-03):** Phase 0 has run, and both the F1 and F5 outcomes in §2.4 occurred: Photon Cloud (Pro) rejected a send under GamePigeon's identity and delivered GamePigeon cards with no URL. Architecture E is blocked on Photon as written. See `PHASE0_FINDINGS.md`. Note that the hybrid fallback in §2.4 would split the conversation across two numbers.
 Code lives in `pigeonai/` (Spectrum project scaffold, `spectrum-ts@^12.10.1`). Module paths below are relative to `pigeonai/src/`.
 
 Confidence labels:
