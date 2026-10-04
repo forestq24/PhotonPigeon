@@ -10,7 +10,7 @@
  *
  * Env: DRY_RUN=1 build and print without sending · CARD_LIVE=1 sets live:true
  *      OMIT_APPSTORE=1 drops appStoreId · MAX_SENDS=<n> hard cap on cards per run (default 4)
- * Codec: spike/vendor/openpigeon (MIT, time-attack/OpenPigeon).
+ * Codec: src/gamepigeon/vendor (MIT, time-attack/OpenPigeon).
  */
 import { randomBytes, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -18,7 +18,7 @@ import { fileURLToPath } from "node:url";
 import { inspect } from "node:util";
 import { Spectrum } from "spectrum-ts";
 import { customizedMiniApp, imessage } from "spectrum-ts/providers/imessage";
-import { parse, toMoveUrl, type Fields } from "./vendor/openpigeon/envelope.ts";
+import { parse, toMoveUrl, type Fields } from "../src/gamepigeon/vendor/envelope.ts";
 
 const GP = {
   appName: "GamePigeon",
