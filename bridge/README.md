@@ -1,8 +1,8 @@
 # pigeon-bridge
 
-Our own iMessage transport, replacing Photon. It signs a dedicated Apple ID into iMessage and exposes send and receive, including app cards such as GamePigeon, over a local Unix socket.
+Our own iMessage transport. It signs an Apple ID into iMessage and exposes send and receive, including app cards such as GamePigeon, over a local Unix socket.
 
-Status: **working for the Phase 0 round trip** (2026-10-03): a real Four in a Row invite was read, our opening move was sent, and GamePigeon on the tester's iPhone played it.
+Status: **working** (2026-10-03). Full Four in a Row and 8 Ball games have been played through it against a real iPhone. The project write-up is in the top-level `README.md`.
 
 ## How it works
 

@@ -1,25 +1,33 @@
 # pigeonai
 
-A [Spectrum](https://photon.codes/docs/spectrum-ts) project. Wired with: imessage.
-
-## Environment
-
-Before running, open `.env` and fill in the values:
-
-From your project Settings on the [Photon dashboard](https://app.photon.codes):
-
-- `PROJECT_ID`
-- `PROJECT_SECRET`
+The PhotonPigeon agent: it plays Four in a Row and 8 Ball on GamePigeon over `pigeon-bridge`. The project write-up, including setup, is in the top-level `README.md`.
 
 ## Run
 
+`pigeon-bridge run` must be running, and for 8 Ball `poolsim/scripts/setup.sh` must have been run once.
+
 ```sh
-npm install
-npm run start
+ALLOWED_SENDERS=+15551234567 npm run play
 ```
 
-## Where to go next
+`ALLOWED_SENDERS` is required: the phone numbers or emails the bot may play against. The other settings are listed at the top of `src/agent.ts`.
 
-- [Spectrum docs](https://photon.codes/docs/spectrum-ts)
-- Edit `src/index.ts` to replace the echo loop with real agent logic.
-- Add more providers from `spectrum-ts/providers/*`.
+## Test
+
+```sh
+npm test
+node --experimental-strip-types spike/pool-fidelity.ts   # 8 Ball physics against captured turns
+```
+
+No `npm install` is needed for any of this. The code runs directly on Node 22.18 or newer with type stripping, so it avoids TypeScript features that need compiling (enums, parameter properties, namespaces).
+
+## Layout
+
+- `src/agent.ts`: the loop. Decode a card, decide, send.
+- `src/transport/bridge.ts`: client for the bridge socket.
+- `src/gamepigeon/vendor/`: GamePigeon URL codec (MIT, from time-attack/OpenPigeon).
+- `src/games/connect4/`, `src/games/pool/`: one folder per game.
+- `spike/`: `bridge-probe.ts` tests the transport alone; `pool-fidelity.ts` checks the physics.
+- `logs/fixtures/`: every card seen or sent, decoded. Gitignored; contains player IDs.
+
+`src/index.ts`, `spike/probe.ts`, `.agents/`, `.env.example`, and the `spectrum-ts` dependency are left over from the abandoned Photon plan and are unused.

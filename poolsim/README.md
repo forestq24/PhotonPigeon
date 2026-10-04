@@ -2,7 +2,7 @@
 
 8 Ball physics for the agent: OpenBubbles/OpenPigeon's pool engine (C++ on a Box2D fork tuned to match GamePigeon), built unmodified as a command-line tool. Our only native code is `src/main.cpp`, which replaces their Android wrapper, plus a no-op logging shim.
 
-Status: **builds and runs; not yet checked against real GamePigeon shots.** `pigeonai/spike/pool-fidelity.ts` does that once 8 Ball turns have been captured.
+Status: **working** (2026-10-03). Of 30 real strokes captured from iPhones, the engine reproduced 29 exactly; the miss was a ball rattling in a corner pocket. `pigeonai/spike/pool-fidelity.ts` reruns that comparison on whatever is in `pigeonai/logs/fixtures/`.
 
 ## Build
 

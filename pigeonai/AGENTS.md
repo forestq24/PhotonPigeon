@@ -1,47 +1,28 @@
-# pigeonai — agent instructions
+# pigeonai: agent instructions
 
-This is a [Spectrum](https://photon.codes/docs/spectrum-ts) app, pinned to `spectrum-ts@^12.10.1`. The entry point is `src/index.ts`, which configures the imessage provider(s) and runs the echo loop.
+This is the PhotonPigeon agent. It plays GamePigeon games (Four in a Row, 8 Ball) over our own iMessage transport. Read the top-level `README.md` first: it describes the whole project and what has been verified.
 
 ## Working in this project
 
-- Run the app with `npm run start`.
-- Add providers by importing them in `src/index.ts` and listing them in the `Spectrum({ providers: [...] })` config.
-- Outgoing message content uses the builders documented in the skill (text, attachment, voice, contact, richlink, poll, group, custom).
+- Run the agent with `ALLOWED_SENDERS=<number or email> npm run play`. It needs `pigeon-bridge run` in another terminal.
+- Run tests with `npm test`.
+- The code runs on Node with type stripping and no build step. Use only erasable TypeScript: no enums, parameter properties, or namespaces. Import with `.ts` extensions.
+- Game modules are pure functions under `src/games/<game>/`. Only `src/transport/bridge.ts` talks to the bridge, and only `src/games/pool/sim.ts` talks to the pool simulator.
+- Never have an LLM choose or alter a move, and never report an outcome the engine did not compute.
 
-## Environment
+## Privacy
 
-This project reads secrets from `.env` (gitignored). **Do not read, write, or echo `.env`** — it contains credentials.
+The bridge is signed into a personal Apple ID and sees every iMessage sent to that person. Anything that reads message content must check `ALLOWED_SENDERS` first. Do not log or save messages from anyone else. `logs/` and `data/` are gitignored and contain player IDs and phone numbers; do not commit them.
 
-If startup fails with an authentication error, tell the user to verify their `PROJECT_ID` / `PROJECT_SECRET` at the [Photon dashboard](https://app.photon.codes).
+## Secrets
 
-## Spectrum SDK reference
+Do not read, write, or echo `.env`. Do not read `~/.pigeon-bridge/state.json`; it holds Apple account tokens.
 
-This project includes the `spectrum` skill from [`photon-hq/skills`](https://github.com/photon-hq/skills). Your agent should auto-discover it. If it doesn't, or if you switch agents, install for your agent with:
+## Building the native parts
 
-```sh
-npx skills add photon-hq/skills --skill spectrum --agent <your-agent>
-```
+- `bridge/scripts/setup.sh` builds the bridge. It compiles third-party Rust, which takes 10-15 minutes the first time. Rebuild only after changing files under `bridge/`, then restart `pigeon-bridge run`.
+- `poolsim/scripts/setup.sh` builds the pool simulator in seconds.
 
-(Use `--agent '*'` to install for all supported agents.)
+## Leftovers
 
-## Managing the Spectrum Cloud project (CLI)
-
-If this app uses a platform provider, the `PROJECT_ID` / `PROJECT_SECRET` in `.env` belong to a **Spectrum Cloud** project. To manage that project from the terminal — authenticate, rotate the secret, list the line(s) you send from, manage platforms/users, or create more projects — use the `photon-cli` skill (the `photon` CLI) from [`photon-hq/skills`](https://github.com/photon-hq/skills):
-
-```sh
-npx skills add photon-hq/skills --skill photon-cli --agent <your-agent>
-```
-
-(Use `--agent '*'` to install for all supported agents.)
-
-Common tasks once it's installed:
-
-- `photon whoami` — confirm you're authenticated (run `photon login` if not).
-- `photon projects regenerate-secret` — rotate the Spectrum API secret (then update `PROJECT_SECRET` in `.env`).
-- `photon spectrum lines list` — see the line(s) your app sends from.
-- `photon projects show` — inspect the active project (set `PHOTON_PROJECT_ID`, or pass `--project <id>`).
-
-## See also
-
-- [Spectrum docs](https://photon.codes/docs/spectrum-ts)
-- [`spectrum-ts` on GitHub](https://github.com/photon-hq/spectrum-ts)
+`src/index.ts`, `spike/probe.ts`, `.agents/skills/spectrum/`, `skills-lock.json`, `.env.example`, and the `spectrum-ts` dependency belong to the abandoned Photon plan. They are unused.
