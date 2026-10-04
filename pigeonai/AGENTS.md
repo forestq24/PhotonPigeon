@@ -1,6 +1,6 @@
 # pigeonai: agent instructions
 
-This is the StockPigeon agent. It plays GamePigeon games (Four in a Row, 8 Ball) over our own iMessage transport. Read the top-level `README.md` first: it describes the whole project and what has been verified.
+This is the StockPigeon game agent. It plays eight GamePigeon games (8 Ball, Four in a Row and six more board games) over our own iMessage transport. Read the top-level `README.md` first: it describes the whole project and what has been verified.
 
 ## Working in this project
 
@@ -8,7 +8,7 @@ This is the StockPigeon agent. It plays GamePigeon games (Four in a Row, 8 Ball)
 - Run tests with `npm test`.
 - The code runs on Node with type stripping and no build step. Use only erasable TypeScript: no enums, parameter properties, or namespaces. Import with `.ts` extensions.
 - Game modules are pure functions under `src/games/<game>/`. Only `src/transport/bridge.ts` talks to the bridge, and only `src/games/pool/sim.ts` talks to the pool simulator.
-- By default no LLM chooses or alters a move. The one exception is the `llm-player` experiment: with `PLAYER=llm`, a model picks moves in the turn-based board games through `src/llm/player.ts`. It may only choose among the legal moves the game module lists. It never applies a move, builds a card, or decides a result, and it is never used for 8 Ball or any physics game.
+- By default no LLM chooses or alters a move. The one exception is the LLM move picker: with `PLAYER=llm`, a model picks moves in the turn-based board games through `src/llm/player.ts`. It may only choose among the legal moves the game module lists. It never applies a move, builds a card, or decides a result, and it is never used for 8 Ball or any physics game.
 - Never report an outcome the game code did not compute.
 
 ## Privacy

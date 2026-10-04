@@ -1,5 +1,5 @@
 /**
- * EXPERIMENT: a language model as the player. For the turn-based board games only.
+ * A language model as the player (PLAYER=llm). For the turn-based board games only.
  *
  * The model chooses; it does not referee. Each request shows it the position in words and asks
  * for one move. The answer is accepted only if it is one of the legal moves the game module

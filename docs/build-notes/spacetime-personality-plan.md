@@ -1,3 +1,5 @@
+> **Build notes, kept for history.** The original plan for the taunt agent (personality, memory, SpacetimeDB), written before it was built. This file was `SPACETIME_PERSONALITY_PLAN.md` at the top level until October 4, 2026. It is not maintained: statuses describe the moment they were written, and relative links may no longer resolve. The current documentation starts at the [top-level README](../../README.md).
+
 # Pigeon: independent gameplay and taunting brains
 
 Status: the text-only baseline is implemented and verified against mocks: observation, personality policy, leased generation, ordinary-text conversation with per-player preferences and memory, and an outbox with a send-only delivery worker. Live validation against the real bridge and a phone has not been run. Updated October 4, 2026.

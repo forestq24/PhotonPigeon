@@ -2,12 +2,12 @@
 
 Our own iMessage transport. It signs an Apple ID into iMessage and exposes send and receive, including app cards such as GamePigeon, over a local Unix socket.
 
-Status: **working** (2026-10-03). Full Four in a Row and 8 Ball games have been played through it against a real iPhone. The project write-up is in the top-level `README.md`.
+Status: **working**. Games in four GamePigeon titles, plus texts and images, have gone through it against real iPhones. The project overview is in the top-level `README.md`.
 
 ## How it works
 
 ```
-pigeonai (TypeScript)  src/transport/bridge.ts
+pigeonai and taunter (TypeScript)
     │ newline-delimited JSON over ~/.pigeon-bridge/bridge.sock
 pigeon-bridge (Rust)   src/pigeon-bridge.rs
     │
@@ -50,7 +50,7 @@ It asks for the Apple ID, password, and two-factor code in the terminal, then pr
 bridge/.build/bin/pigeon-bridge run
 ```
 
-Then, from `pigeonai/`, rerun Phase 0 over the bridge:
+Then start the game agent and the taunt agent as described in the top-level `README.md`. To test the transport on its own, from `pigeonai/`:
 
 ```sh
 ALLOWED_SENDERS=+15551234567 npx tsx spike/bridge-probe.ts
@@ -83,7 +83,7 @@ Commands to the bridge, each with a numeric `req`:
 | `op` | Fields |
 |---|---|
 | `send_text` | `chat`, `text` |
-| `send_image` | `chat`, `name` (letters, digits, `.`, `_`, `-`), `mime` (`image/jpeg`, `image/png` or `image/gif`), `data_b64` (at most 2 MB before encoding). Sent as an ordinary attachment. Added October 4; not yet compiled or run, so rerun `scripts/setup.sh` |
+| `send_image` | `chat`, `name` (letters, digits, `.`, `_`, `-`), `mime` (`image/jpeg`, `image/png` or `image/gif`), `data_b64` (at most 2 MB before encoding). Sent as an ordinary attachment |
 | `send_balloon` | `chat`, `bundle_id`, `app_name`, `url`, optional `adam_id`, `session`, `caption`, `subcaption`, `ld_text`, `live`, `icon_b64`, `breadcrumb`, `reply_to` |
 | `tapback` | `chat`, `target`, `reaction` (`love`, `like`, `dislike`, `laugh`, `emphasize`, `question`, or an emoji), optional `remove` |
 | `typing` | `chat`, `active` |
@@ -92,7 +92,7 @@ Commands to the bridge, each with a numeric `req`:
 
 Observation events carry `stream_epoch` and `stream_seq`. The bridge retains the latest 1,024 events in memory only. A replay with `complete: false` means the cursor is unavailable (restart, overflow, or invalid future cursor); observers must invalidate affected game-history eligibility rather than guess missing results. Replay/live overlap must be deduplicated by cursor. Successful sends mean accepted, not delivered/read. No database or model call occurs on the gameplay send path.
 
-The additive observer was compiled and tested with synthetic data. Its live Apple feed still requires validation after the rebuilt bridge is restarted. The conversation observer and model probes do not send messages. Future banter uses separate `send_text` messages; it never changes or annotates GamePigeon moves.
+The taunt agent reads this stream and sends its banter as separate `send_text` and `send_image` messages; it never changes or annotates GamePigeon moves.
 
 ## Licences and risk
 

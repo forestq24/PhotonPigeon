@@ -5,7 +5,7 @@
  * For each GamePigeon card from an allowed sender: decode the game, apply their move,
  * pick ours, and send it back as a GamePigeon card. By default the engine picks every move.
  *
- * EXPERIMENT (branch llm-player): with PLAYER=llm a language model picks the moves in the
+ * With PLAYER=llm a language model picks the moves in the
  * turn-based board games, Four in a Row included. It only chooses among legal moves; the game
  * code still applies them and decides who won. 8 Ball is physics and always uses the engine.
  * 8 Ball needs the pool simulator built first (poolsim/scripts/setup.sh).
@@ -138,7 +138,7 @@ function saveFixture(gameId: string, num: string, direction: "in" | "out" | "own
 
 const bridge = await Bridge.connect();
 console.log(`[agent] connected. playing against: ${ALLOWED.handles().join(", ") || "nobody yet"}${DRY_RUN ? " (DRY_RUN: nothing is sent)" : ""}`);
-console.log(ASK ? `[agent] EXPERIMENT: board-game moves are picked by ${LLM_MODEL}. 8 Ball still uses the engine.` : "[agent] moves are picked by the engine.");
+console.log(ASK ? `[agent] board-game moves are picked by ${LLM_MODEL}, with the search engine as the fallback. 8 Ball uses the physics engine.` : "[agent] moves are picked by the engine.");
 
 async function sendCard(chat: string, inbound: Balloon, replyTo: string, fields: Fields, ver: number, caption: string, subcaption: string): Promise<void> {
   const url = toMoveUrl(fields, ver);
