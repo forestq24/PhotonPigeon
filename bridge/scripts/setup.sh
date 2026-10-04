@@ -31,6 +31,8 @@ python3 "$ROOT/patches/apply.py"
 
 mkdir -p "$CRATE/src/bin"
 cp "$ROOT/src/pigeon-bridge.rs" "$CRATE/src/bin/pigeon-bridge.rs"
+mkdir -p "$CRATE/src/bin/pigeon_observations"
+cp "$ROOT/src/pigeon_observations/mod.rs" "$CRATE/src/bin/pigeon_observations/mod.rs"
 
 # Same flags as Corten's macOS from-source build: Apple's native framework generates validation data.
 (cd "$CRATE" && MACOSX_DEPLOYMENT_TARGET=13.0 cargo build --release --bin pigeon-bridge \

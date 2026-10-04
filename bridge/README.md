@@ -20,10 +20,10 @@ Nothing from upstream is committed. `scripts/setup.sh` fetches it into `.build/`
 
 ## Build
 
-Needs Xcode Command Line Tools, `cargo` (`brew install rust`), `protoc`, `python3`, `perl`, `git`, `make`. macOS 13 or newer.
+Needs Xcode Command Line Tools, `cargo` with Rust 1.95+ (the current pinned upstream uses `AtomicU64::update`), `protoc`, `python3`, `perl`, `git`, `make`. macOS 13 or newer.
 
 ```sh
-bridge/scripts/setup.sh
+RUSTUP_TOOLCHAIN=1.95.0 bridge/scripts/setup.sh
 ```
 
 This clones two third-party repos and compiles them, which runs their build scripts on your machine. The binary lands at `bridge/.build/bin/pigeon-bridge`.
@@ -66,8 +66,10 @@ Events from the bridge:
 
 | `type` | Fields |
 |---|---|
-| `ready` | `handles`, `default_handle`. Sent on connect |
+| `ready` | `handles`, `default_handle`, `observation_stream: {epoch, latest}`. Sent on connect |
 | `message` | `id`, `chat`, `sender`, `from_me`, `is_group`, `timestamp_ms`, `text`, `stored`, `participants`, optional `balloon`, optional `reply_to` (set when the card is a reply inside an app session, as every GamePigeon move after the first is) |
+| `sent_card` | Exact outgoing `balloon`, `chat`, transport-returned `id`, `timestamp_ms`, `source: transport_send`, `accepted: true`, `from_me: true`; emitted only after a successful app-card send |
+| `stream_gap` | `dropped`: subscriber lag; request replay before trusting continuity |
 | `other` | base fields plus `flags`: a message kind the agent does not act on, without content |
 | `tapback` | base fields plus `target`, `kind`, `emoji`, `remove` |
 | `typing`, `delivered`, `read` | base fields |
@@ -85,6 +87,11 @@ Commands to the bridge, each with a numeric `req`:
 | `tapback` | `chat`, `target`, `reaction` (`love`, `like`, `dislike`, `laugh`, `emphasize`, `question`, or an emoji), optional `remove` |
 | `typing` | `chat`, `active` |
 | `ping` | none |
+| `observe_since` | `epoch`, `after` (last processed sequence); no `chat` required. Response includes `epoch`, `oldest`, `latest`, `complete`, `events` |
+
+Observation events carry `stream_epoch` and `stream_seq`. The bridge retains the latest 1,024 events in memory only. A replay with `complete: false` means the cursor is unavailable (restart, overflow, or invalid future cursor); observers must invalidate affected game-history eligibility rather than guess missing results. Replay/live overlap must be deduplicated by cursor. Successful sends mean accepted, not delivered/read. No database or model call occurs on the gameplay send path.
+
+The additive observer was compiled and tested with synthetic data. Its live Apple feed still requires validation after the rebuilt bridge is restarted. The conversation observer and model probes do not send messages. Future banter uses separate `send_text` messages; it never changes or annotates GamePigeon moves.
 
 ## Licences and risk
 

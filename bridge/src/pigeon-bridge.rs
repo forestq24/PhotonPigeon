@@ -30,6 +30,13 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::{broadcast, mpsc};
 
+#[path = "pigeon_observations/mod.rs"]
+mod observations;
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as u64
+}
+
 const STATE_FILE: &str = "state.json";
 const APS_CHECKPOINT_SECS: u64 = 300;
 
@@ -264,6 +271,7 @@ struct Bridge {
     default_handle: String,
     chats: Mutex<HashMap<String, Chat>>,
     events: broadcast::Sender<String>,
+    journal: Mutex<observations::Journal>,
 }
 
 impl Bridge {
@@ -272,7 +280,14 @@ impl Bridge {
     }
 
     fn ready_event(&self) -> String {
-        json!({ "type": "ready", "handles": self.handles, "default_handle": self.default_handle }).to_string()
+        json!({ "type": "ready", "handles": self.handles, "default_handle": self.default_handle,
+            "observation_stream": self.journal.lock().unwrap().ready() }).to_string()
+    }
+
+    fn publish_observation(&self, event: Value) {
+        // Lock through broadcast so sequence order is identical for every observer.
+        let mut journal = self.journal.lock().unwrap();
+        let _ = self.events.send(journal.record(event));
     }
 
     fn conversation(&self, chat_id: &str) -> (WrappedConversation, String) {
@@ -413,6 +428,11 @@ impl Bridge {
 
     async fn dispatch(&self, req: &Value) -> Result<Value, String> {
         let op = req["op"].as_str().ok_or("missing op")?;
+        if op == "observe_since" {
+            let epoch = req["epoch"].as_str().ok_or("missing epoch")?;
+            let after = req["after"].as_u64().ok_or("missing after")?;
+            return Ok(self.journal.lock().unwrap().replay(epoch, after));
+        }
         if op == "ping" {
             return Ok(json!({}));
         }
@@ -472,6 +492,7 @@ impl Bridge {
                     )
                     .await
                     .map_err(|e| e.to_string())?;
+                self.publish_observation(observations::sent_card(req, &id, now_ms()));
                 Ok(json!({ "id": id }))
             }
             "tapback" => {
@@ -524,9 +545,8 @@ fn is_uuid(s: &str) -> bool {
 async fn serve_connection(bridge: Arc<Bridge>, stream: UnixStream) {
     let (read_half, mut write_half) = stream.into_split();
     let (out_tx, mut out_rx) = mpsc::unbounded_channel::<String>();
-    let _ = out_tx.send(bridge.ready_event());
-
     let mut events = bridge.events.subscribe();
+    let _ = out_tx.send(bridge.ready_event());
     let event_tx = out_tx.clone();
     let forward = tokio::spawn(async move {
         loop {
@@ -536,7 +556,9 @@ async fn serve_connection(bridge: Arc<Bridge>, stream: UnixStream) {
                         break;
                     }
                 }
-                Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                Err(broadcast::error::RecvError::Lagged(dropped)) => {
+                    let _ = event_tx.send(json!({"type":"stream_gap", "dropped":dropped}).to_string());
+                }
                 Err(broadcast::error::RecvError::Closed) => break,
             }
         }
@@ -633,6 +655,7 @@ async fn run(state_dir: &Path, socket_path: &Path) -> Result<(), String> {
         default_handle,
         chats: Mutex::new(HashMap::new()),
         events,
+        journal: Mutex::new(observations::Journal::new(format!("{}-{}", now_ms(), std::process::id()), 1024)),
     });
 
     // Inbound messages -> events.
@@ -653,7 +676,7 @@ async fn run(state_dir: &Path, socket_path: &Path) -> Result<(), String> {
                     event["flags"],
                     inbound_bridge.events.receiver_count(),
                 );
-                let _ = inbound_bridge.events.send(event.to_string());
+                inbound_bridge.publish_observation(event);
                 if is_inbound_message && !chat.starts_with("group:") && !msg.is_stored_message {
                     let (conversation, handle) = inbound_bridge.conversation(&chat);
                     if let Err(e) = inbound_bridge.client.send_delivery_receipt(conversation, handle).await {

@@ -12,8 +12,11 @@ This file is the single write-up of the project as of **2026-10-03**. It replace
 | Four in a Row | Working, played live | Five full games against a real iPhone; the bot won all five |
 | 8 Ball | Working, played live once | One full game against a real iPhone; the opponent won |
 | 8 Ball physics (`poolsim/`) | Matches real phones closely | 29 of 30 real strokes reproduced exactly (details below) |
-| Chat, banter, persona | Not built | The bot only plays; it never sends text |
+| Chat, banter, persona | Partially implemented | Private reaction policy and leased generation are locally tested; ordinary-text chat and delivery are pending |
+| Independent conversation foundation (`taunter/`) | Locally tested; live replies pending | Read-only game observation, private Spacetime state, recovery and leased Anthropic generation; [plan](SPACETIME_PERSONALITY_PLAN.md), [setup](taunter/README.md) |
 | Other games | Not built | Invites are recorded and ignored |
+
+For the remaining conversation-agent work, see the detailed [implementation handoff in taunter/README.md](taunter/README.md#remaining-conversation-work). It includes the current completion boundary, prioritized milestones, file map, delivery failure handling, test commands and release acceptance criteria.
 
 ## How it works
 
@@ -43,7 +46,7 @@ poolsim/  pool-sim (C++)
           OpenPigeon's pool physics as a command-line tool
 ```
 
-No LLM is involved anywhere. Every move comes from a deterministic engine.
+No LLM is involved in gameplay. Every move comes from a deterministic engine. The separate conversation foundation uses Anthropic Haiku for text generation; one real API request is verified; live text delivery remains pending. Conversational replies will be separate text messages, never part of a game move.
 
 ## Repository layout
 
@@ -202,7 +205,7 @@ The physics is not ours. `poolsim/` builds the pool engine from [OpenBubbles/Ope
 
 ## Known gaps
 
-- **No chat.** The persona and banter from the original design ("Pigeon", playful, never mean, moves chosen by the engine and never by an LLM) were not built.
+- **No live chat.** Pigeon reaction policy and leased text generation are implemented separately in `taunter/`; ordinary-text intake, conversational memory/preferences and text delivery are pending. Gameplay remains deterministic.
 - **Games are forgotten on restart.** Sessions live in memory.
 - **8 Ball: ball in hand is unused.** After an opponent's foul the bot shoots from the center spot.
 - **8 Ball: ball textures.** Moved balls keep their old rotation values, so the numbers may face the wrong way. Cosmetic.
