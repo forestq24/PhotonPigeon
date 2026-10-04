@@ -123,6 +123,8 @@ flowchart LR
   Images -.->|"synced into"| Tables
 ```
 
+A presentation-friendly version of the same architecture is in [`stockpigeon-architecture.excalidraw`](stockpigeon-architecture.excalidraw). Open it at [excalidraw.com](https://excalidraw.com) (File → Open) or in the VS Code Excalidraw extension.
+
 State ownership:
 
 - **Game state** lives in the iMessage card URL. The game agent keeps only in-memory sessions.
