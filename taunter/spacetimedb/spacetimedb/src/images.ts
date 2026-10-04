@@ -46,9 +46,10 @@ const fnv = (text: string) => {
   return hash;
 };
 
-/** Only some reactions get an image: a stable one in IMAGE_ONE_IN, decided by the event itself. */
-export const IMAGE_ONE_IN = 3;
-export const wantsImage = (eventId: string): boolean => fnv(`image?${eventId}`) % IMAGE_ONE_IN === 0;
+/** Only some reactions get an image: a stable IMAGE_TIMES in every IMAGE_OUT_OF, decided by the event itself. */
+export const IMAGE_TIMES = 2;
+export const IMAGE_OUT_OF = 5;
+export const wantsImage = (eventId: string): boolean => fnv(`image?${eventId}`) % IMAGE_OUT_OF < IMAGE_TIMES;
 
 /** Stable event-derived pick from the approved images in a bucket, avoiding the player's recent ones. */
 export function pickImage(approved: string[], eventId: string, recent: string[]): string | undefined {

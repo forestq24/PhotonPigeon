@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { IMAGE_ONE_IN, imageBucket, pickImage, wantsImage } from '../spacetimedb/spacetimedb/src/images.ts';
+import { IMAGE_OUT_OF, IMAGE_TIMES, imageBucket, pickImage, wantsImage } from '../spacetimedb/spacetimedb/src/images.ts';
 
 const base = { gameKind: 'connect', reliable: true, terminal: false, eligibleResult: false, outcome: 'unknown', actor: 'bot', humanThreats: 0, botThreats: 0 };
 test('verified results map to the bot\'s point of view; anything unverified is neutral', () => {
@@ -26,7 +26,7 @@ test('8 ball in progress takes the mood of the moment being reacted to', () => {
 test('only some reactions get an image, decided by the event and stable on replay', () => {
   const events = Array.from({ length: 3000 }, (_, i) => `worker:epoch:${i}`);
   const share = events.filter(wantsImage).length / events.length;
-  assert.ok(Math.abs(share - 1 / IMAGE_ONE_IN) < 0.05, `about one in ${IMAGE_ONE_IN}, got ${share}`);
+  assert.ok(Math.abs(share - IMAGE_TIMES / IMAGE_OUT_OF) < 0.05, `about ${IMAGE_TIMES} in ${IMAGE_OUT_OF}, got ${share}`);
   assert.deepEqual(events.slice(0, 50).map(wantsImage), events.slice(0, 50).map(wantsImage));
 });
 test('four in a row mid-game only leaves neutral when the next move settles it', () => {

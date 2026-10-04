@@ -102,7 +102,7 @@ try {
   // Most reactions carry no image at all.
   const bare = await observe('bot won, no image this time', won, undefined, false); await settle();
   assert.ok(connection.db.myReactions.id.find(bare.id)); assert.equal(chosen(bare.id), undefined);
-  console.log('ok sometimes: an event outside the one-in-three gets its text reaction and no image');
+  console.log('ok sometimes: an event not chosen for an image gets its text reaction and no image');
 
   // Sending order: the image is queued only after the bridge accepted the reaction's text.
   const outbox = (id: string) => connection.db.myOutbox.id.find(id) ?? undefined;

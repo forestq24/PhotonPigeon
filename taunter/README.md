@@ -30,7 +30,7 @@ Only the module runs on SpacetimeDB. The three workers run on the same Mac as th
 | Three losses in a row, or three of the last five | "three straight. this getting sad 💔" |
 | A direct text from the player | a reply in the same voice |
 
-Unprompted texts are at least a minute apart, except that a new final result is always answered. About one reaction in three also gets an image from `../reaction_images`, sent after its text: a winning, losing or neutral one depending on the verified game state.
+Unprompted texts are at least a minute apart, except that a new final result is always answered. About two reactions in five also get an image from `../reaction_images`, sent after its text: a winning, losing or neutral one depending on the verified game state.
 
 It follows all eight games. Results are reported only when the board itself is finished, and leads only past a clear margin.
 
