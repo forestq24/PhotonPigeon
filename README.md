@@ -49,6 +49,89 @@ poolsim/  pool-sim (C++)
 
 By default no LLM is involved in gameplay: every move comes from a deterministic engine. The `llm-player` branch adds an opt-in experiment in which a model picks the moves in the board games (see [LLM player](#llm-player-experiment)). The separate conversation agent uses Anthropic Haiku for text generation; one real API request is verified, and text delivery is verified against a fake bridge only. Conversational replies are separate text messages, never part of a game move.
 
+## System architecture
+
+Conceptual components and runtime flows, as implemented at commit `65292be`. Solid arrows are implemented and exercised. Dashed arrows are opt-in or unverified (the LLM move picker, and reaction-image sync and sending, which are mock-verified only).
+
+```mermaid
+flowchart LR
+  subgraph Human["Human side"]
+    Phone["Opponent iPhone<br/>Messages + GamePigeon"]
+    Admin["Operator"]
+  end
+
+  Apple(["Apple iMessage"])
+
+  subgraph Transport["Transport"]
+    Bridge["pigeon-bridge (Rust, rustpush)<br/>send / receive JSON over Unix socket<br/>sequenced observation stream + replay"]
+  end
+
+  subgraph Allow["Access control"]
+    AllowFile[("allowlist.json<br/>hot-reloaded")]
+    AllowUI["Allowlist web page<br/>local HTTP, token-gated"]
+  end
+
+  subgraph GameAgent["Game agent (pigeonai)"]
+    Codec["Card codec<br/>cipher + envelope"]
+    Router["Game router + registry<br/>per-chat queues, dedupe, sessions"]
+    Engines["Deterministic engines<br/>Connect4 + 6 board games<br/>search / rules / reply builder"]
+    PoolLogic["8 Ball logic<br/>wire, rules, shot strategy"]
+    LLMPick["Optional LLM move picker<br/>PLAYER=llm, engine fallback"]
+    Fixtures[("Fixture logs")]
+  end
+
+  PoolSim["pool-sim (C++)<br/>OpenPigeon physics<br/>stdin/stdout subprocess"]
+
+  subgraph Taunter["Conversation agent (taunter)"]
+    Observer["Observer daemon<br/>local spool + cursor + gap handling"]
+    GenWorker["Generation worker<br/>claim, generate, complete"]
+    DelWorker["Delivery worker<br/>claim, journal marker, send once"]
+    Journal[("Delivery journal")]
+    Images[("reaction_images/<br/>winning / losing / neutral")]
+  end
+
+  subgraph STDB["SpacetimeDB module (shared state owner)"]
+    Logic["Reducers + procedures<br/>reaction evaluation, persona,<br/>commands, image choice,<br/>leases and claims"]
+    Tables[("Tables: observations, games,<br/>players, memory, conversation,<br/>reactions, outbox, image data")]
+  end
+
+  Anthropic(["Anthropic Messages API<br/>Haiku"])
+
+  Phone <--> Apple <--> Bridge
+  Bridge <-->|"cards in / cards out"| Router
+  Router --> Codec
+  Router --> Engines
+  Router --> PoolLogic
+  PoolLogic <--> PoolSim
+  Router -.->|"opt-in"| LLMPick
+  LLMPick -.-> Anthropic
+  Router --> Fixtures
+  AllowFile -->|"gates senders"| Router
+  AllowFile --> Observer
+  AllowFile --> DelWorker
+  Admin --> AllowUI --> AllowFile
+
+  Bridge -->|"observation stream"| Observer
+  Observer -->|"ingest observations"| Logic
+  Logic <--> Tables
+  Tables -->|"pending jobs"| GenWorker
+  GenWorker -->|"prompt"| Anthropic
+  GenWorker -->|"complete job"| Logic
+  Tables -->|"outbox rows"| DelWorker
+  DelWorker --> Journal
+  DelWorker -->|"send text / image"| Bridge
+  Images -.->|"synced into"| Tables
+```
+
+State ownership:
+
+- **Game state** lives in the iMessage card URL. The game agent keeps only in-memory sessions.
+- **Conversation, memory, reactions, outbox and leases** are owned by SpacetimeDB, which arbitrates generation and send claims.
+- **The observer spool and delivery journal** are local to their processes.
+- **The allowlist** is a single local file shared by every process.
+
+The game agent and the conversation agent do not call each other. They share only the bridge, the allowlist and the human on the other end.
+
 ## Repository layout
 
 ```
