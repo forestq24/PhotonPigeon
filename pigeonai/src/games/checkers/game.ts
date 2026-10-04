@@ -13,8 +13,8 @@
  *    crowned mid-jump keeps jumping. The game ends when one side has no pieces.
  */
 import type { Fields } from "../../gamepigeon/vendor/envelope.ts";
-import { field, senderOutcome, type CardGame, type Decision } from "../common/card.ts";
-import { chooseMove, type Rules, type Slot } from "../common/search.ts";
+import { field, senderOutcome, type Brief, type CardGame, type Decision } from "../common/card.ts";
+import type { Rules, Slot } from "../common/search.ts";
 
 export const START = "0,2,0,2,0,2,0,2,2,0,2,0,2,0,2,0,0,2,0,2,0,2,0,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1,0,1,0,1,0,0,1,0,1,0,1,0,1,1,0,1,0,1,0,1,0";
 
@@ -150,23 +150,39 @@ export const formatReplay = (before: Uint8Array, turn: Turn, after: Uint8Array):
 
 export const ascii = (cells: Uint8Array): string => Array.from({ length: 8 }, (_, y) => Array.from({ length: 8 }, (_, x) => ".rbRB"[cells[y * 8 + x]!]).join(" ")).join("\n");
 
+/** A square as a person writes it: column letter then row number, a1 at the top-left. */
+const squareLabel = (cell: number): string => `${String.fromCharCode(97 + (cell % 8))}${(cell >> 3) + 1}`;
+/** A whole turn: the squares visited, joined by - for a step and x for jumps. */
+export const turnLabel = (turn: Turn): string => turn.path.map(squareLabel).join(turn.capture ? "x" : "-");
+
+export function brief(s: State, slot: Slot): Brief {
+  const glyph = (piece: number): string => (piece === 0 ? "." : owner(piece) === slot ? (isKing(piece) ? "X" : "x") : isKing(piece) ? "O" : "o");
+  const rows = Array.from({ length: 8 }, (_, y) => `${y + 1} ${Array.from({ length: 8 }, (_, x) => glyph(s.cells[y * 8 + x]!)).join(" ")}`);
+  return {
+    game: "Checkers",
+    rules: `Checkers on an 8 x 8 board. Men move one square diagonally forwards; yours move towards row ${slot === 1 ? 1 : 8}. A piece captures by jumping diagonally over an adjacent enemy piece into the empty square behind it, and must keep jumping while it can. Men capture forwards only. A man that reaches the far row becomes a king, which moves and captures one square in any diagonal direction. ${s.mandatory ? "If you can capture, you must." : "Captures are optional."} You win by taking all the opponent's pieces.`,
+    board: `x = your man, X = your king, o = opponent's man, O = opponent's king, . = empty\n  a b c d e f g h\n${rows.join("\n")}`,
+    moveFormat: "the squares your piece visits, like c6-d5 for a step or c6xe4xg2 for jumps",
+  };
+}
+
 export const checkers: CardGame = {
   game: "checkers",
   title: "Checkers",
-  decide(fields, slot, ctx): Decision {
+  async decide(fields, slot, ctx): Promise<Decision> {
     const cells = readCard(fields);
     if (!cells) return { kind: "skip", log: "cannot read a 64-cell board from this card, no reply" };
     if (senderOutcome(fields) !== undefined || pieces(cells, 1) === 0 || pieces(cells, 2) === 0) return { kind: "over", log: "the game is over on the opponent's card." };
     const state: State = { cells, toMove: slot, mandatory: (field(fields, "mode") ?? "n") === "n" };
     if (legalTurns(state).length === 0) return { kind: "over", log: "we have no legal move. the app has no card for that, so the game stops here." };
-    const choice = chooseMove(rules, state, { timeMs: ctx.timeMs });
+    const choice = await ctx.pick({ rules, state, legal: legalTurns(state), label: turnLabel, brief: brief(state, slot) });
     const after = play(state, choice.move).cells;
     const wins = pieces(after, (3 - slot) as Slot) === 0;
     return {
       kind: "reply",
       updates: { replay: formatReplay(cells, choice.move, after) },
       outcome: wins ? "win" : undefined,
-      log: `${choice.move.capture ? "capturing" : "moving"} ${choice.move.path.map(xy).join(" -> ")} (depth ${choice.depth}, ${choice.nodes} nodes, ${Math.round(choice.ms)}ms)${wins ? ". we win" : ""}\n${ascii(after)}`,
+      log: `${choice.move.capture ? "capturing" : "moving"} ${choice.move.path.map(xy).join(" -> ")} (${choice.note})${wins ? ". we win" : ""}\n${ascii(after)}`,
     };
   },
 };

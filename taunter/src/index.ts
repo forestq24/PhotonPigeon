@@ -3,10 +3,13 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { BridgeObserver, type BridgeRecord } from './bridge-observer.ts';
 import { ObserverState } from './observer.ts';
+import { LiveAllowlist } from '../../pigeonai/src/allowlist.ts';
 import type { DbConnection } from './module_bindings/index';
 import { openStore, syncRecords } from './store.ts';
 
-const allowed = (process.env.ALLOWED_SENDERS ?? '').split(',').map(s => s.trim()).filter(Boolean);
+// ALLOWED_SENDERS plus the allowlist file (npm run allowlist in pigeonai/), re-read when it changes.
+const allowed = new LiveAllowlist({ onChange: handles => console.log(`[taunter] allowlist changed: ${handles.length} sender(s) allowed`) });
+if (!allowed.handles().length && !allowed.file) throw new Error('Nobody is allowed: set ALLOWED_SENDERS or use the allowlist file');
 const state = new ObserverState(process.env.TAUNTER_DATA_DIR ?? './.data/observer', allowed);
 const socketPath = process.env.BRIDGE_SOCKET ?? join(homedir(), '.pigeon-bridge', 'bridge.sock');
 let store: DbConnection | undefined;

@@ -12,8 +12,8 @@
  *    current colour. The game ends when the two areas cover the board; the larger area wins.
  */
 import type { Fields } from "../../gamepigeon/vendor/envelope.ts";
-import { field, senderOutcome, type CardGame, type Decision, type Outcome } from "../common/card.ts";
-import { chooseMove, type Rules, type Slot } from "../common/search.ts";
+import { field, senderOutcome, type Brief, type CardGame, type Decision, type Outcome } from "../common/card.ts";
+import type { Rules, Slot } from "../common/search.ts";
 
 export const WIDTH = 8;
 export const HEIGHT = 7;
@@ -134,15 +134,29 @@ export function readCard(fields: Fields): { cells?: number[]; problems: string[]
 export const ascii = (cells: number[]): string =>
   Array.from({ length: HEIGHT }, (_, i) => cells.slice((HEIGHT - 1 - i) * WIDTH, (HEIGHT - i) * WIDTH).join(" ")).join("\n");
 
+export const COLOUR_NAMES = ["red", "green", "yellow", "blue", "purple", "black"];
+
+export function brief(s: State, slot: Slot): Brief {
+  const letters = "RGYBPK";
+  const rows = Array.from({ length: HEIGHT }, (_, i) => s.cells.slice((HEIGHT - 1 - i) * WIDTH, (HEIGHT - i) * WIDTH).map((c) => letters[c]).join(" "));
+  const [mine, theirs] = [territory(s.cells, slot).length, territory(s.cells, (3 - slot) as Slot).length];
+  return {
+    game: "Filler",
+    rules: "Filler on an 8 x 7 grid of coloured cells. Each player owns the connected area of same-coloured cells that starts at their corner. A move picks a colour: your whole area turns that colour and absorbs every neighbouring cell (up, down, left, right) of that colour. You may not pick your own current colour or the opponent's current colour. The game ends when the two areas cover the board; the larger area wins.",
+    board: `R = red, G = green, Y = yellow, B = blue, P = purple, K = black\nYour corner is the ${slot === 1 ? "bottom-left" : "top-right"} cell (currently ${COLOUR_NAMES[s.cells[corner(slot)]!]}); the opponent's is the ${slot === 1 ? "top-right" : "bottom-left"} cell (currently ${COLOUR_NAMES[s.cells[corner((3 - slot) as Slot)]!]}).\nArea so far: you ${mine}, opponent ${theirs}.\n${rows.join("\n")}`,
+    moveFormat: "a colour name",
+  };
+}
+
 export const filler: CardGame = {
   game: "fill",
   title: "Filler",
-  decide(fields, slot, ctx): Decision {
+  async decide(fields, slot, ctx): Promise<Decision> {
     const { cells, problems } = readCard(fields);
     if (!cells) return { kind: "skip", log: `cannot use this card, no reply:\n  ${problems.join("\n  ")}` };
     if (senderOutcome(fields) !== undefined || isOver(cells)) return { kind: "over", log: "the game is over on the opponent's card." };
     const state: State = { cells, toMove: slot };
-    const choice = chooseMove(rules, state, { timeMs: ctx.timeMs });
+    const choice = await ctx.pick({ rules, state, legal: legalColours(cells), label: (colour) => COLOUR_NAMES[colour]!, brief: brief(state, slot) });
     const after = play(state, choice.move).cells;
     const [a, b] = sizes(after);
     const [mine, theirs] = slot === 1 ? [a, b] : [b, a];
@@ -151,7 +165,7 @@ export const filler: CardGame = {
       kind: "reply",
       updates: { replay: `board:${cells.join(",")}|move:${choice.move}|board:${after.join(",")}` },
       outcome,
-      log: `choosing colour ${choice.move} (depth ${choice.depth}, ${Math.round(choice.ms)}ms). areas: us ${mine}, them ${theirs}${outcome ? `. game over: ${outcome}` : ""}\n${ascii(after)}`,
+      log: `choosing ${COLOUR_NAMES[choice.move]} (${choice.note}). areas: us ${mine}, them ${theirs}${outcome ? `. game over: ${outcome}` : ""}\n${ascii(after)}`,
     };
   },
 };

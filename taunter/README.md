@@ -528,7 +528,8 @@ At the beginning and end of implementation, compare the protected gameplay paths
 
 | Variable | Current meaning |
 |---|---|
-| `ALLOWED_SENDERS` | Required for observation and for delivery. Gates intake, and is the only source of recipients |
+| `ALLOWED_SENDERS` | Who may be observed and messaged. Combined with the allowlist file edited by `npm run allowlist` in `pigeonai/` (`~/.stockpigeon/allowlist.json`), which is re-read when it changes. Together they gate intake and are the only source of recipients |
+| `ALLOWLIST_FILE` | Another path for that file, or `none` to use `ALLOWED_SENDERS` alone (the test suites do this) |
 | `BRIDGE_SOCKET` | Observation socket; defaults to `~/.pigeon-bridge/bridge.sock`; use a fake socket in tests |
 | `TAUNTER_DATA_DIR` | Local observation journal/salt; defaults to `.data/observer` |
 | `SPACETIME_URI` | Adapter WebSocket endpoint; defaults to `ws://127.0.0.1:3210` |

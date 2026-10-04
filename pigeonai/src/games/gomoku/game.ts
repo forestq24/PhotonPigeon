@@ -9,8 +9,8 @@
  *  - Five or more in a row wins; there are no forbidden moves. The winning card adds `winner`.
  */
 import type { Fields } from "../../gamepigeon/vendor/envelope.ts";
-import { field, senderOutcome, type CardGame, type Decision } from "../common/card.ts";
-import { chooseMove, type Rules, type Slot } from "../common/search.ts";
+import { field, senderOutcome, type Brief, type CardGame, type Decision } from "../common/card.ts";
+import type { Rules, Slot } from "../common/search.ts";
 
 export const DEFAULT_DIM = 13;
 export type Stone = 0 | 1 | 2;
@@ -152,16 +152,35 @@ export const ascii = (s: State): string =>
     return Array.from({ length: s.dim }, (_, col) => ".OX"[s.cells[row * s.dim + col]!]).join(" ");
   }).join("\n");
 
+/** A point as a person writes it: column letter then row number, a1 at the bottom-left. */
+export const pointLabel = (s: State, cell: number): string => `${String.fromCharCode(97 + (cell % s.dim))}${Math.floor(cell / s.dim) + 1}`;
+
+export function brief(s: State, slot: Slot): Brief {
+  const mine = stoneOf(slot);
+  const header = `   ${Array.from({ length: s.dim }, (_, col) => String.fromCharCode(97 + col)).join(" ")}`;
+  const rows = Array.from({ length: s.dim }, (_, i) => {
+    const row = s.dim - 1 - i;
+    return `${String(row + 1).padStart(2)} ${Array.from({ length: s.dim }, (_, col) => { const c = s.cells[row * s.dim + col]; return c === 0 ? "." : c === mine ? "X" : "O"; }).join(" ")}`;
+  });
+  return {
+    game: "Gomoku",
+    rules: `Gomoku on a ${s.dim} x ${s.dim} board. Players take turns placing one stone on any empty point. The first to line up five or more of their own stones in an unbroken row, column or diagonal wins. There are no other restrictions.`,
+    board: `X = your stones, O = the opponent's stones, . = empty\n${header}\n${rows.join("\n")}`,
+    moveFormat: "an empty point, column letter then row number, like g7",
+  };
+}
+
 export const gomoku: CardGame = {
   game: "renju",
   title: "Gomoku",
-  decide(fields, slot, ctx): Decision {
+  async decide(fields, slot, ctx): Promise<Decision> {
     const { state, problems } = readCard(fields);
     if (problems.length > 0) return { kind: "skip", log: `cannot use this card, no reply:\n  ${problems.join("\n  ")}` };
     if (senderOutcome(fields) !== undefined || state.won) return { kind: "over", log: "the game is over on the opponent's card." };
     if (state.stones === state.cells.length) return { kind: "over", log: "the board is full." };
     if (state.toMove !== slot) return { kind: "skip", log: "it is not our move on this card, no reply" };
-    const choice = chooseMove(rules, state, { timeMs: ctx.timeMs });
+    const legal = Array.from({ length: state.cells.length }, (_, cell) => cell).filter((cell) => state.cells[cell] === 0);
+    const choice = await ctx.pick({ rules, state, legal, label: (cell) => pointLabel(state, cell), brief: brief(state, slot) });
     const after = place(state, choice.move);
     const row = Math.floor(choice.move / state.dim);
     const col = choice.move % state.dim;
@@ -170,7 +189,7 @@ export const gomoku: CardGame = {
       // The map travels WITHOUT the stone named in `move`.
       updates: { map: Array.from(state.cells).join(""), move: `${row},${col},${stoneOf(slot)}` },
       outcome: after.won === slot ? "win" : undefined,
-      log: `playing row ${row + 1}, column ${col + 1} (depth ${choice.depth}, ${choice.nodes} nodes, ${Math.round(choice.ms)}ms)${after.won === slot ? ". we win" : ""}\n${ascii(after)}`,
+      log: `playing row ${row + 1}, column ${col + 1} (${choice.note})${after.won === slot ? ". we win" : ""}\n${ascii(after)}`,
     };
   },
 };

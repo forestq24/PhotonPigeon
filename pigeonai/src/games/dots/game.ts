@@ -13,8 +13,8 @@
  *  - The game ends when every box is claimed; more boxes wins.
  */
 import type { Fields } from "../../gamepigeon/vendor/envelope.ts";
-import { field, senderOutcome, type CardGame, type Decision, type Outcome } from "../common/card.ts";
-import { chooseMove, type Rules, type Slot } from "../common/search.ts";
+import { field, senderOutcome, type Brief, type CardGame, type Decision, type Outcome } from "../common/card.ts";
+import type { Rules, Slot } from "../common/search.ts";
 
 export interface State {
   /** Dots per side. */
@@ -118,10 +118,23 @@ export const ascii = (s: State): string => {
   return rows.join("\n");
 };
 
+/** A line as a person writes it: the two dots it joins. */
+export const lineLabel = (n: number, line: number): string => { const [x1, y1, x2, y2] = endpoints(n, line); return `${x1},${y1}-${x2},${y2}`; };
+
+export function brief(s: State, slot: Slot): Brief {
+  const picture = ascii(s).replace(/[12]/g, (owner) => (Number(owner) === slot ? "Y" : "T"));
+  return {
+    game: "Dots & Boxes",
+    rules: `Dots & Boxes on a grid of ${s.n} x ${s.n} dots (${s.n - 1} x ${s.n - 1} boxes). A move draws one line between two neighbouring dots. Drawing the fourth side of a box claims it and you must then draw again. When every box is claimed, the player with more boxes wins. Drawing the third side of a box lets the opponent take it.`,
+    board: `Dots are (x,y): x counts from the left starting at 0, y counts from the bottom starting at 0. Drawn lines are shown as -- and |. Y = a box you own, T = a box the opponent owns.\nBoxes so far: you ${score(s, slot)}, opponent ${score(s, (3 - slot) as Slot)}.\n${picture}`,
+    moveFormat: "the two dots the line joins, like 0,0-1,0",
+  };
+}
+
 export const dots: CardGame = {
   game: "dots",
   title: "Dots & Boxes",
-  decide(fields, slot, ctx): Decision {
+  async decide(fields, slot, ctx): Promise<Decision> {
     const { state, board, problems } = readCard(fields);
     if (!state) return { kind: "skip", log: `cannot use this card, no reply:\n  ${problems.join("\n  ")}` };
     if (senderOutcome(fields) !== undefined || isOver(state)) return { kind: "over", log: "the game is over on the opponent's card." };
@@ -129,9 +142,12 @@ export const dots: CardGame = {
     const chunks: string[] = [];
     const lineRecords: string[] = [];
     const boxRecords: string[] = [];
+    const notes: string[] = [];
     // Every line of our turn goes in one card: keep drawing while we keep completing boxes.
     while (!isOver(now) && now.toMove === slot) {
-      const choice = chooseMove(rules, now, { timeMs: ctx.timeMs });
+      const position = now;
+      const choice = await ctx.pick({ rules, state: position, legal: rules.moves(position), label: (line) => lineLabel(position.n, line), brief: brief(position, slot) });
+      notes.push(choice.note);
       const { state: next, completed } = draw(now, choice.move);
       const line = `${slot},${endpoints(now.n, choice.move).join(",")}`;
       lineRecords.push(line);
@@ -148,7 +164,7 @@ export const dots: CardGame = {
       kind: "reply",
       updates: { replay: [`board:${board}`, ...chunks, `board:${after}`].join("|") },
       outcome,
-      log: `drawing ${lineRecords.length} line(s), taking ${boxRecords.length} box(es). boxes: us ${mine}, them ${other}${outcome ? `. game over: ${outcome}` : ""}\n${ascii(now)}`,
+      log: `drawing ${lineRecords.length} line(s), taking ${boxRecords.length} box(es) (${notes.join("; ")}). boxes: us ${mine}, them ${other}${outcome ? `. game over: ${outcome}` : ""}\n${ascii(now)}`,
     };
   },
 };

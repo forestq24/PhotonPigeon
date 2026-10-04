@@ -12,15 +12,48 @@
  *  - `winner` is `<sender id>|<flag>`: 1 the sender won, -1 the sender lost, 0 a draw.
  */
 import type { Fields } from "../../gamepigeon/vendor/envelope.ts";
-import type { Slot } from "./search.ts";
+import { chooseMove, type Rules, type Slot } from "./search.ts";
 
 export type Outcome = "win" | "loss" | "draw";
 
+/** Everything a player (the search engine or a language model) needs to choose one move. */
+export interface PickRequest<S, M> {
+  rules: Rules<S, M>;
+  state: S;
+  /** Every legal move. `rules.moves` may list fewer: the search only looks at promising ones. */
+  legal: M[];
+  /** How a move is written for a person or a model. Unique among the legal moves. */
+  label(move: M): string;
+  /** The position in words, for a player that cannot read the state object. */
+  brief: Brief;
+}
+export interface Brief {
+  game: string;
+  /** The rules that matter for choosing a move, in a few sentences. */
+  rules: string;
+  /** The board as text, already from the mover's point of view, with its legend. */
+  board: string;
+  /** How a move label reads, e.g. "column letter then row number, like c4". */
+  moveFormat: string;
+}
+export interface Picked<M> {
+  move: M;
+  /** For the log: how the move was found. */
+  note: string;
+}
+export type Picker = <S, M>(request: PickRequest<S, M>) => Promise<Picked<M>>;
+
 export interface TurnContext {
   botId: string;
-  /** Search budget for this move, in milliseconds. */
-  timeMs: number;
+  /** Chooses each move. The rules, legality and results stay with the game module. */
+  pick: Picker;
 }
+
+/** The built-in player: search for `timeMs` milliseconds. */
+export const enginePicker = (timeMs: number): Picker => async (request) => {
+  const choice = chooseMove(request.rules, request.state, { timeMs });
+  return { move: choice.move, note: `depth ${choice.depth}, ${choice.nodes} nodes, ${Math.round(choice.ms)}ms` };
+};
 
 export type Decision =
   /** Our move. `updates` are this game's own fields, readable (not percent-encoded). */
@@ -36,7 +69,7 @@ export interface CardGame {
   /** Shown in logs. */
   title: string;
   /** `slot` is ours: the opposite of the card's `player`. */
-  decide(fields: Fields, slot: Slot, ctx: TurnContext): Decision;
+  decide(fields: Fields, slot: Slot, ctx: TurnContext): Promise<Decision>;
 }
 
 /** Field values travel with `|`, `&`, `#` and spaces percent-encoded; `:` and `,` stay literal. */

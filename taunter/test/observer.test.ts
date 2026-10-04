@@ -66,3 +66,21 @@ test('observer requests replay only and merges successful outgoing observations 
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('a live allowlist is asked again for every message, so adding or removing someone needs no restart', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'taunter-'));
+  try {
+    const allowed = new Set<string>();
+    const state = new ObserverState(dir, { has: handle => allowed.has(handle) });
+    const text = (seq: number, id: string) => state.ingest({ type: 'message', id, chat: 'tel:+15550100001', from_me: false, is_group: false, stored: false, text: `hello ${id}`, stream_epoch: 'a', stream_seq: seq });
+    text(1, 'before');
+    assert.equal(state.records.some(record => record.text), false, 'not allowed yet: nothing is kept');
+    assert.doesNotMatch(readFileSync(join(dir, 'observations.jsonl'), 'utf8'), /hello/);
+    allowed.add('tel:+15550100001');
+    text(2, 'during');
+    assert.equal(state.records.filter(record => record.text).length, 1);
+    allowed.clear();
+    text(3, 'after');
+    assert.equal(state.records.filter(record => record.text).length, 1, 'removed: later messages are not kept');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { parse, toMoveUrl, type Fields } from "../src/gamepigeon/vendor/envelope.ts";
-import { botSlot, buildReply, captionFor, senderOutcome, wireEncode } from "../src/games/common/card.ts";
+import { botSlot, buildReply, captionFor, enginePicker, senderOutcome, wireEncode } from "../src/games/common/card.ts";
 import { chooseMove, WIN, type Rules } from "../src/games/common/search.ts";
 import * as checkers from "../src/games/checkers/game.ts";
 import * as dots from "../src/games/dots/game.ts";
@@ -55,8 +55,8 @@ test("envelope: a reply claims our slot, keeps unknown fields and drops the invi
   assert.equal(buildReply(reply, BOT_B, "avatar", {}).has("winner"), false);
 });
 
-test("gomoku: wire coordinates, the lagged map, and five in a row", () => {
-  const first = gomoku.gomoku.decide(invite("renju"), 1, { botId: BOT_A, timeMs: 20 });
+test("gomoku: wire coordinates, the lagged map, and five in a row", async () => {
+  const first = await gomoku.gomoku.decide(invite("renju"), 1, { botId: BOT_A, pick: enginePicker(20) });
   assert.equal(first.kind, "reply");
   if (first.kind !== "reply") return;
   assert.equal(first.updates.map, "0".repeat(169), "the map travels without the stone named in move");
@@ -67,22 +67,22 @@ test("gomoku: wire coordinates, the lagged map, and five in a row", () => {
   const read = gomoku.readCard(card);
   assert.deepEqual(read.problems, []);
   assert.equal(read.state.won, 2);
-  assert.equal(gomoku.gomoku.decide(card, 1, { botId: BOT_A, timeMs: 20 }).kind, "over");
+  assert.equal((await gomoku.gomoku.decide(card, 1, { botId: BOT_A, pick: enginePicker(20) })).kind, "over");
   // An open four must be answered or completed.
   const threat = new Map([["player", "2"], ["map", "0111".padEnd(13, "0") + "0222".padEnd(13, "0") + "0".repeat(169 - 26)], ["move", "0,4,1"]]);
-  const answer = gomoku.gomoku.decide(threat, 1, { botId: BOT_A, timeMs: 100 });
+  const answer = await gomoku.gomoku.decide(threat, 1, { botId: BOT_A, pick: enginePicker(100) });
   assert.equal(answer.kind, "reply");
   if (answer.kind === "reply") assert.ok(["0,0,2", "0,5,2", "1,0,2", "1,4,2"].includes(answer.updates.move!), `unexpected ${answer.updates.move}`);
   for (const bad of [{ move: "0,4,2" }, { move: "0,0,1" }, { move: "20,4,1" }, { map: "012" }]) {
-    assert.equal(gomoku.gomoku.decide(new Map([...card, ...Object.entries(bad)]), 1, { botId: BOT_A, timeMs: 20 }).kind, "skip", JSON.stringify(bad));
+    assert.equal((await gomoku.gomoku.decide(new Map([...card, ...Object.entries(bad)]), 1, { botId: BOT_A, pick: enginePicker(20) })).kind, "skip", JSON.stringify(bad));
   }
 });
 
-test("reversi: flips, the starting position and a pass inside one card", () => {
+test("reversi: flips, the starting position and a pass inside one card", async () => {
   const start = reversi.startState();
   assert.deepEqual(reversi.flips(start.cells, 26, 1), [27]);
   assert.equal(reversi.legalMoves(start.cells, 1).length, 4);
-  const first = reversi.reversi.decide(invite("reversi"), 1, { botId: BOT_A, timeMs: 20 });
+  const first = await reversi.reversi.decide(invite("reversi"), 1, { botId: BOT_A, pick: enginePicker(20) });
   assert.equal(first.kind, "reply");
   if (first.kind !== "reply") return;
   assert.match(first.updates.replay!, /^board:0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,1,0,0,0,0,0,0,1,2,0(,0){26}\|move:\d,\d,1\|board:[012,]+$/);
@@ -94,10 +94,10 @@ test("reversi: flips, the starting position and a pass inside one card", () => {
   const pass = reversi.play({ cells, toMove: 1, over: false }, 2);
   assert.equal(pass.toMove, 1, "the opponent cannot move, so the mover keeps the turn");
   const bad = new Map([["player", "2"], ["replay", `board:${Array.from(start.cells).join(",")}|move:0,0,2|board:${Array.from(start.cells).join(",")}`]]);
-  assert.equal(reversi.reversi.decide(bad, 1, { botId: BOT_A, timeMs: 20 }).kind, "skip");
+  assert.equal((await reversi.reversi.decide(bad, 1, { botId: BOT_A, pick: enginePicker(20) })).kind, "skip");
 });
 
-test("checkers: the app's examples, mandatory capture and a crowned piece that keeps jumping", () => {
+test("checkers: the app's examples, mandatory capture and a crowned piece that keeps jumping", async () => {
   const board = (csv: string) => Uint8Array.from(csv.split(",").map(Number));
   const start = { cells: board(checkers.START), toMove: 1 as const, mandatory: true };
   assert.equal(checkers.legalTurns(start).length, 7);
@@ -112,12 +112,12 @@ test("checkers: the app's examples, mandatory capture and a crowned piece that k
     "attack:2,2,4,0|attack:4,0,6,2|board:0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0");
   assert.ok(checkers.legalTurns({ ...state, mandatory: false }).length > 1, "newbie mode also offers plain moves");
   const last = new Map([["player", "2"], ["mode", "n"], ["replay", "board:0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0"]]);
-  const win = checkers.checkers.decide(last, 1, { botId: BOT_A, timeMs: 50 });
+  const win = await checkers.checkers.decide(last, 1, { botId: BOT_A, pick: enginePicker(50) });
   assert.equal(win.kind, "reply");
   if (win.kind === "reply") { assert.equal(win.outcome, "win"); assert.match(win.updates.replay!, /\|attack:2,5,4,3\|/); }
 });
 
-test("dots & boxes: reproduces the app's sample turn and continues from its board verbatim", () => {
+test("dots & boxes: reproduces the app's sample turn and continues from its board verbatim", async () => {
   const PRE = "1,0,2,0,3#2,0,1,0,2#1,0,0,0,1#2,2,1,2,2#1,3,0,3,1#2,2,0,2,1#1,1,1,1,2#2,1,0,1,1#1,3,2,3,3#2,1,2,1,3#1,3,1,3,2#2,2,2,2,3#1,1,0,2,0";
   const POST = `${PRE}#2,1,1,2,1#2,1,2,2,2#2,1,3,2,3#2,2,0,3,0#2,1,0#2,1,1#2,1,2`;
   let state = { ...dots.readCard(new Map([["replay", `board:${PRE}`]])).state!, toMove: 2 as const };
@@ -130,15 +130,15 @@ test("dots & boxes: reproduces the app's sample turn and continues from its boar
   }
   assert.equal(chunks.join("|"), "line:2,1,1,2,1|square:2,1,0|line:2,1,2,2,2|square:2,1,1|line:2,1,3,2,3|square:2,1,2|line:2,2,0,3,0");
   assert.equal(state.toMove, 1, "the line that completes nothing passes the turn");
-  const reply = dots.dots.decide(new Map([["player", "2"], ["size", "4"], ["replay", `board:${PRE}|${chunks.join("|")}|board:${POST}`]]), 1, { botId: BOT_A, timeMs: 50 });
+  const reply = await dots.dots.decide(new Map([["player", "2"], ["size", "4"], ["replay", `board:${PRE}|${chunks.join("|")}|board:${POST}`]]), 1, { botId: BOT_A, pick: enginePicker(50) });
   assert.equal(reply.kind, "reply");
   if (reply.kind === "reply") assert.ok(reply.updates.replay!.startsWith(`board:${POST}|line:1,`));
-  const first = dots.dots.decide(invite("dots", { size: "5" }), 1, { botId: BOT_A, timeMs: 20 });
+  const first = await dots.dots.decide(invite("dots", { size: "5" }), 1, { botId: BOT_A, pick: enginePicker(20) });
   assert.equal(first.kind, "reply");
   if (first.kind === "reply") assert.match(first.updates.replay!, /^board:\|line:1,\d,\d,\d,\d\|board:1,\d,\d,\d,\d$/);
 });
 
-test("mancala: sowing, the extra move, a capture and the closing sweep match the app's worked games", () => {
+test("mancala: sowing, the extra move, a capture and the closing sweep match the app's worked games", async () => {
   const state = (board: string, toMove: 1 | 2) => ({ pits: mancala.parseBoard(board)!, toMove, avalanche: false, over: false });
   const START = "1,2,3,1&2,3,1,2&3,1,2,3&1,1,2,3&2,2,3,1&3,3,1,2&&11,12,13,11&12,13,11,12&13,11,12,13&11,11,12,13&12,12,13,11&13,13,11,12&";
   const M2 = "1,2,3,1&2,3,1,2&&1,1,2,3,3&2,2,3,1,1&&3,3&11,12,13,11,3&12,13,11,12,1&13,11,12,13,2&11,11,12,13,2&12,12,13,11&13,13,11,12&";
@@ -158,7 +158,7 @@ test("mancala: sowing, the extra move, a capture and the closing sweep match the
   assert.notEqual(mancala.formatBoard(chain.pits), mancala.formatBoard(mancala.sow(state(mancala.DEFAULT_BOARD, 1), 0).pits));
 });
 
-test("filler: the seeded starting board, forbidden colours and territory", () => {
+test("filler: the seeded starting board, forbidden colours and territory", async () => {
   assert.equal(filler.boardFromSeed(0).join(","), "2,1,0,5,3,5,4,2,5,4,3,1,5,1,2,4,4,0,1,3,2,0,3,0,5,1,2,1,3,4,5,4,4,0,4,2,0,1,2,0,0,4,1,3,2,4,1,5,4,3,4,2,3,5,0,3");
   assert.equal(filler.boardFromSeed(-94585187).length, 56);
   assert.deepEqual(filler.boardFromSeed(-94585187), filler.boardFromSeed(-94585187));
@@ -166,13 +166,13 @@ test("filler: the seeded starting board, forbidden colours and territory", () =>
   assert.deepEqual(filler.legalColours(cells), [0, 1, 4, 5], "not our colour (2) and not theirs (3)");
   const after = filler.play({ cells, toMove: 1 }, 1).cells;
   assert.deepEqual(filler.territory(after, 1).sort((a, b) => a - b), [0, 1]);
-  const first = filler.filler.decide(invite("fill", { seed: "0" }), 1, { botId: BOT_A, timeMs: 30 });
+  const first = await filler.filler.decide(invite("fill", { seed: "0" }), 1, { botId: BOT_A, pick: enginePicker(30) });
   assert.equal(first.kind, "reply");
   if (first.kind === "reply") assert.match(first.updates.replay!, /^board:2,1,0,5[\d,]+\|move:[0145]\|board:[\d,]+$/);
-  assert.equal(filler.filler.decide(invite("fill"), 1, { botId: BOT_A, timeMs: 30 }).kind, "skip", "no seed and no replay: the board is unknown");
+  assert.equal((await filler.filler.decide(invite("fill"), 1, { botId: BOT_A, pick: enginePicker(30) })).kind, "skip", "no seed and no replay: the board is unknown");
 });
 
-test("every game: two bots exchanging real encoded cards finish a legal game", () => {
+test("every game: two bots exchanging real encoded cards finish a legal game", async () => {
   const invites: Record<string, Record<string, string>> = {
     renju: {}, reversi: {}, checkers: { mode: "n" }, dots: { size: "4" }, fill: { seed: "12345" }, mancala: { mode: "n", replay: `board:${mancala.DEFAULT_BOARD}` },
   };
@@ -188,7 +188,7 @@ test("every game: two bots exchanging real encoded cards finish a legal game", (
       const slot = botSlot(fields)!;
       // Bot A answers the human's invite; from then on the two bots alternate.
       const botId = bots[turn % 2]!;
-      const decision = rules.decide(fields, slot, { botId, timeMs: turn % 2 === 0 ? 12 : 4 });
+      const decision = await rules.decide(fields, slot, { botId, pick: enginePicker(turn % 2 === 0 ? 12 : 4) });
       assert.notEqual(decision.kind, "skip", `${game} turn ${turn}: ${decision.log}`);
       if (decision.kind !== "reply") { finished = "over on receipt"; break; }
       card = buildReply(fields, botId, "avatar", decision.updates, decision.outcome);
@@ -202,6 +202,114 @@ test("every game: two bots exchanging real encoded cards finish a legal game", (
     assert.ok(finished, `${game} did not finish`);
     // The side that receives the final card agrees that the game is over.
     const final = parse(toMoveUrl(card)).fields;
-    assert.equal(rules.decide(final, botSlot(final)!, { botId: BOT_B, timeMs: 5 }).kind, "over", `${game}: final card`);
+    assert.equal((await rules.decide(final, botSlot(final)!, { botId: BOT_B, pick: enginePicker(5) })).kind, "over", `${game}: final card`);
   }
+});
+
+// ---------------------------------------------------------------- the model player (experiment)
+import { createServer } from "node:http";
+import { connectBrief } from "../src/llm/connect4.ts";
+import { anthropicAsk, askForMove, modelPicker, type Ask } from "../src/llm/player.ts";
+import { emptyBoard, legalMoves } from "../src/games/connect4/rules.ts";
+
+test("model player: its choice is played when legal, corrected once, and the engine steps in otherwise", async () => {
+  const seen: { prompt: string; legal?: string[] }[] = [];
+  const scripted = (...answers: (string | Error)[]): Ask => async (question) => {
+    seen.push(question);
+    const next = answers.shift();
+    if (next === undefined || next instanceof Error) throw next ?? new Error("no answer");
+    return { move: next, thinking: "taking the centre" };
+  };
+  const start = reversi.startState();
+  const request = { rules: reversi.rules, state: start, legal: reversi.legalMoves(start.cells, 1), label: reversi.squareLabel, brief: reversi.brief(start, 1) };
+  const labels = request.legal.map(reversi.squareLabel).sort();
+  assert.deepEqual(labels, ["c4", "d3", "e6", "f5"]);
+
+  // A legal answer is played as given, however it is capitalised or spaced.
+  const picked = await modelPicker(scripted(" C4 "), enginePicker(20), "test-model")(request);
+  assert.equal(reversi.squareLabel(picked.move), "c4");
+  assert.match(picked.note, /^test-model: taking the centre/);
+  assert.deepEqual(seen[0]!.legal!.slice().sort(), labels, "the model is offered exactly the legal moves");
+  assert.match(seen[0]!.prompt, /Rules: Reversi/);
+  assert.match(seen[0]!.prompt, /X = your discs \(2\), O = the opponent's discs \(2\)/);
+  assert.doesNotMatch(seen[0]!.prompt, /tel:|mailto:|[0-9A-F]{8}-[0-9A-F]{4}/, "no handles or player ids are sent");
+
+  // An illegal answer gets one correction.
+  seen.length = 0;
+  const corrected = await modelPicker(scripted("a1", "f5"), enginePicker(20), "test-model")(request);
+  assert.equal(reversi.squareLabel(corrected.move), "f5");
+  assert.match(seen[1]!.prompt, /"a1" is not a legal move/);
+
+  // Two illegal answers, or a failure, hand the move to the engine: the game never stalls and never plays an illegal move.
+  for (const ask of [scripted("a1", "h8"), scripted(new Error("model API returned 529")), scripted()]) {
+    const backup = await modelPicker(ask, enginePicker(20), "test-model")(request);
+    assert.ok(labels.includes(reversi.squareLabel(backup.move)));
+    assert.match(backup.note, /engine played instead/);
+  }
+
+  // A forced move costs no model call.
+  seen.length = 0;
+  const forced = await askForMove(scripted("zz"), { legal: [42], label: String, brief: request.brief }, "test-model");
+  assert.deepEqual(forced, { move: 42, note: "only legal move" });
+  assert.equal(seen.length, 0);
+
+  // Many legal moves are described by format, not listed; the answer is still checked.
+  seen.length = 0;
+  const empty = gomoku.emptyState();
+  const points = Array.from({ length: 169 }, (_, cell) => cell);
+  const centre = await askForMove(scripted("g7"), { legal: points, label: (cell) => gomoku.pointLabel(empty, cell), brief: gomoku.brief(empty, 1) }, "test-model");
+  assert.ok("move" in centre && centre.move === 6 * 13 + 6);
+  assert.equal(seen[0]!.legal, undefined);
+  assert.match(seen[0]!.prompt, /There are 169 legal moves/);
+});
+
+test("model player: every game describes its position and names its moves unambiguously", async () => {
+  const briefs: string[] = [];
+  const first: Ask = async (question) => { briefs.push(`${question.system}\n${question.prompt}`); return { move: question.legal![0]!, thinking: "first legal move" }; };
+  const games: [string, Record<string, string>, RegExp][] = [
+    ["reversi", {}, /your discs/], ["checkers", { mode: "n" }, /If you can capture, you must/], ["dots", { size: "4" }, /Boxes so far: you 0, opponent 0/],
+    ["mancala", { mode: "n", replay: `board:${mancala.DEFAULT_BOARD}` }, /Your pits: pit 1: 4/], ["fill", { seed: "0" }, /bottom-left cell \(currently yellow\)/],
+  ];
+  for (const [game, extra, expected] of games) {
+    const decision = await BOARD_GAMES.get(game)!.decide(invite(game, extra), 1, { botId: BOT_A, pick: modelPicker(first, enginePicker(10), "test-model") });
+    assert.equal(decision.kind, "reply", game);
+    assert.match(briefs.at(-1)!, expected, game);
+    if (decision.kind === "reply") assert.match(decision.log, /test-model: first legal move|only legal move/, game);
+  }
+  // Four in a Row keeps its own module; the model sees columns 1 to 7.
+  const column = await askForMove(first, { legal: legalMoves(emptyBoard()), label: (col) => String(col + 1), brief: connectBrief(emptyBoard(), 1) }, "test-model");
+  assert.ok("move" in column);
+  assert.match(briefs.at(-1)!, /1 2 3 4 5 6 7\n(\. \. \. \. \. \. \.\n?){6}/);
+});
+
+test("model player: the API request forces a tool answer and a failing or slow API is reported, not trusted", async () => {
+  let handler: (body: Record<string, any>) => { status: number; body: unknown; delayMs?: number } = () => ({ status: 500, body: {} });
+  let lastHeaders: Record<string, unknown> = {};
+  const server = createServer((req, res) => {
+    let raw = "";
+    req.on("data", (chunk) => (raw += chunk));
+    req.on("end", () => {
+      lastHeaders = req.headers;
+      const { status, body, delayMs } = handler(JSON.parse(raw));
+      setTimeout(() => { res.writeHead(status, { "content-type": "application/json" }); res.end(JSON.stringify(body)); }, delayMs ?? 0);
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const endpoint = `http://127.0.0.1:${(server.address() as { port: number }).port}/messages`;
+  const ask = anthropicAsk({ apiKey: "test-key", model: "test-model", timeoutMs: 300, endpoint });
+  try {
+    let sent: Record<string, any> = {};
+    handler = (body) => { sent = body; return { status: 200, body: { content: [{ type: "tool_use", name: "play_move", input: { thinking: "centre", move: "4" } }] } }; };
+    assert.deepEqual(await ask({ system: "s", prompt: "p", legal: ["3", "4"] }), { move: "4", thinking: "centre" });
+    assert.equal(sent.model, "test-model");
+    assert.deepEqual(sent.tool_choice, { type: "tool", name: "play_move" });
+    assert.deepEqual(sent.tools[0].input_schema.properties.move.enum, ["3", "4"]);
+    assert.equal(lastHeaders["x-api-key"], "test-key");
+    handler = () => ({ status: 200, body: { content: [{ type: "text", text: "I think column 4" }] } });
+    await assert.rejects(ask({ system: "s", prompt: "p" }), /did not return a move/);
+    handler = () => ({ status: 401, body: { error: { message: "SECRET-ERROR-BODY" } } });
+    await assert.rejects(ask({ system: "s", prompt: "p" }), (err: Error) => /returned 401/.test(err.message) && !/SECRET/.test(err.message));
+    handler = () => ({ status: 200, body: {}, delayMs: 800 });
+    await assert.rejects(ask({ system: "s", prompt: "p" }));
+  } finally { server.closeAllConnections(); await new Promise((resolve) => server.close(resolve)); }
 });

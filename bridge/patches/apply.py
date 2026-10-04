@@ -16,10 +16,10 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 LIB = ROOT / ".build" / "corten" / "pkg" / "rustpushgo" / "src" / "lib.rs"
-MARKER = "PhotonPigeon bridge patch"
+MARKER = "StockPigeon bridge patch"
 
 FIELDS = """
-    // PhotonPigeon bridge patch: iMessage app balloon (e.g. GamePigeon).
+    // StockPigeon bridge patch: iMessage app balloon (e.g. GamePigeon).
     pub app_bundle_id: Option<String>,
     pub app_name: Option<String>,
     pub app_adam_id: Option<u64>,
@@ -44,7 +44,7 @@ INITS = """        app_bundle_id: None,
         balloon_icon: None,
 """
 
-INBOUND = """            // PhotonPigeon bridge patch: expose the app balloon.
+INBOUND = """            // StockPigeon bridge patch: expose the app balloon.
             if let Some(ref app) = normal.app {
                 w.app_bundle_id = Some(app.bundle_id.clone());
                 w.app_name = Some(app.name.clone());
@@ -74,7 +74,7 @@ REACT_OLD = """                ReactMessageType::Extension { .. } => {
 REACT_NEW = """                ReactMessageType::Extension { spec, .. } => {
                     // Extension reactions (stickers etc.) — mark as tapback
                     w.tapback_type = Some(7);
-                    // PhotonPigeon bridge patch: a card sent as a reply inside an app
+                    // StockPigeon bridge patch: a card sent as a reply inside an app
                     // session (every GamePigeon move after the first) arrives here.
                     w.app_bundle_id = Some(spec.bundle_id.clone());
                     w.app_name = Some(spec.name.clone());
@@ -95,7 +95,7 @@ REACT_NEW = """                ReactMessageType::Extension { spec, .. } => {
 """
 
 SEND = """
-// ---- PhotonPigeon bridge patch: send an iMessage app balloon ----
+// ---- StockPigeon bridge patch: send an iMessage app balloon ----
 impl Client {
     #[allow(clippy::too_many_arguments)]
     pub async fn send_balloon(

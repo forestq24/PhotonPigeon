@@ -1,37 +1,48 @@
 /**
- * PhotonPigeon agent: plays Four in a Row, 8 Ball and the board games in games/registry.ts
+ * StockPigeon agent: plays Four in a Row, 8 Ball and the board games in games/registry.ts
  * on GamePigeon, over pigeon-bridge.
  *
  * For each GamePigeon card from an allowed sender: decode the game, apply their move,
- * pick ours with the engine, and send it back as a GamePigeon card. No LLM is involved.
+ * pick ours, and send it back as a GamePigeon card. By default the engine picks every move.
+ *
+ * EXPERIMENT (branch llm-player): with PLAYER=llm a language model picks the moves in the
+ * turn-based board games, Four in a Row included. It only chooses among legal moves; the game
+ * code still applies them and decides who won. 8 Ball is physics and always uses the engine.
  * 8 Ball needs the pool simulator built first (poolsim/scripts/setup.sh).
  *
  * The bridge may be signed into a personal Apple ID and so sees every iMessage sent to that
- * person. Only senders in ALLOWED_SENDERS are ever decoded, logged, or answered.
+ * person. Only senders on the allowlist are ever decoded, logged, or answered.
  *
  * Run: ALLOWED_SENDERS=+15551234567 npm run play   (pigeon-bridge must be running)
- * Env: ALLOWED_SENDERS=<comma-separated phone numbers or emails>   required
+ * Env: ALLOWED_SENDERS=<comma-separated phone numbers or emails> who may play. People added on the
+ *        allowlist page (npm run allowlist) are allowed too, without a restart. See src/allowlist.ts.
  *      DRY_RUN=1 decide and print, but send nothing · MOVE_TIME_MS=<n> search budget (default 300)
  *      REPLY_STYLE=plain|session how follow-up moves are sent (default plain; session attaches each
  *        move to the opponent's card, the way real clients do)
  *      POOL_MAX_POTS=<n> 8 Ball: potting strokes per turn before the bot plays a deliberate miss
  *        (default 3, so the opponent gets to play; 0 = no limit)
+ *      PLAYER=engine|llm who picks moves in the board games (default engine). llm needs
+ *        ANTHROPIC_API_KEY in the environment. LLM_MODEL (default claude-haiku-4-5-20251001),
+ *        LLM_TIMEOUT_MS per move (default 30000; the engine plays if the model is late or fails)
  *      DATA_DIR (default ./data) bot identity · LOG_DIR (default ./logs) per-message fixtures
  *      BRIDGE_SOCKET=<path>
  */
 import { randomBytes, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { ascii, drop, emptyBoard, isFull, landingRow, validate, winsAt, type Cell, type Slot } from "./games/connect4/rules.ts";
+import { ascii, drop, emptyBoard, isFull, landingRow, legalMoves, validate, winsAt, type Cell, type Slot } from "./games/connect4/rules.ts";
 import { chooseMove } from "./games/connect4/strategy.ts";
 import { buildContinuation, buildOpeningReply, isInvite, parseReplay, parseWinner } from "./games/connect4/turn.ts";
 import { POCKETS, type Group } from "./games/pool/rules.ts";
 import { PoolSim } from "./games/pool/sim.ts";
 import { DEFAULT_RACK, buildPoolReply, playTurn } from "./games/pool/turn.ts";
 import { parseBalls, parsePoolReplay } from "./games/pool/wire.ts";
-import { botSlot, buildReply, captionFor } from "./games/common/card.ts";
+import { botSlot, buildReply, captionFor, enginePicker, type Picker } from "./games/common/card.ts";
 import { BOARD_GAMES } from "./games/registry.ts";
 import { parse, toMoveUrl, type Fields } from "./gamepigeon/vendor/envelope.ts";
+import { connectBrief } from "./llm/connect4.ts";
+import { anthropicAsk, askForMove, modelPicker, type Ask } from "./llm/player.ts";
+import { LiveAllowlist } from "./allowlist.ts";
 import { Bridge, type Balloon, type BridgeEvent } from "./transport/bridge.ts";
 
 const GP_BUNDLE_SUFFIX = "com.gamerdelights.gamepigeon.ext";
@@ -44,14 +55,50 @@ const MOVE_TIME_MS = Math.min(Number(process.env.MOVE_TIME_MS ?? 300), 2000);
 const SESSION_REPLIES = process.env.REPLY_STYLE === "session";
 const POOL_MAX_POTS = Number(process.env.POOL_MAX_POTS ?? 3);
 const DATA_DIR = process.env.DATA_DIR ?? "./data";
+
+// Who picks the moves in the board games. 8 Ball never uses this.
+const LLM_MODEL = process.env.LLM_MODEL ?? "claude-haiku-4-5-20251001";
+let ASK: Ask | undefined;
+if (process.env.PLAYER === "llm") {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    console.error("PLAYER=llm needs ANTHROPIC_API_KEY in the environment.");
+    process.exit(1);
+  }
+  // A different endpoint is accepted only on loopback, for tests. Real requests always go to Anthropic.
+  if (process.env.LLM_ENDPOINT && !/^http:\/\/127\.0\.0\.1:\d+\//.test(process.env.LLM_ENDPOINT)) {
+    console.error("LLM_ENDPOINT may only be a local test endpoint.");
+    process.exit(1);
+  }
+  ASK = anthropicAsk({ apiKey, model: LLM_MODEL, timeoutMs: Number(process.env.LLM_TIMEOUT_MS ?? 30000), workspaceId: process.env.ANTHROPIC_WORKSPACE_ID, endpoint: process.env.LLM_ENDPOINT });
+} else if (process.env.PLAYER && process.env.PLAYER !== "engine") {
+  console.error(`PLAYER must be engine or llm, not ${process.env.PLAYER}`);
+  process.exit(1);
+}
+const PICK: Picker = ASK ? modelPicker(ASK, enginePicker(MOVE_TIME_MS), LLM_MODEL) : enginePicker(MOVE_TIME_MS);
+
+/** Four in a Row keeps its own engine; with PLAYER=llm the model picks the column and that engine is the backup. */
+async function chooseColumn(board: Cell[], slot: Slot): Promise<{ col: number; note: string }> {
+  const engine = (): { col: number; note: string } => {
+    const choice = chooseMove(board, slot, { timeMs: MOVE_TIME_MS });
+    return { col: choice.col, note: `depth ${choice.depth}, ${choice.nodes} nodes, ${Math.round(choice.ms)}ms` };
+  };
+  if (!ASK) return engine();
+  const picked = await askForMove(ASK, { legal: legalMoves(board), label: (col) => String(col + 1), brief: connectBrief(board, slot) }, LLM_MODEL);
+  if ("move" in picked) return { col: picked.move, note: picked.note };
+  const backup = engine();
+  return { col: backup.col, note: `${picked.failed}; engine played instead (${backup.note})` };
+}
 const FIXTURE_DIR = join(process.env.LOG_DIR ?? "./logs", "fixtures");
 
-/** Bridge handles look like "tel:+15551234567" or "mailto:someone@icloud.com". */
-const toHandle = (s: string) => (/^(tel|mailto):/.test(s) ? s : s.includes("@") ? `mailto:${s}` : `tel:${s}`).toLowerCase();
-const ALLOWED = new Set((process.env.ALLOWED_SENDERS ?? "").split(",").map((s) => s.trim()).filter(Boolean).map(toHandle));
-if (ALLOWED.size === 0) {
-  console.error("ALLOWED_SENDERS is required: the phone numbers or emails the agent may play against.");
-  process.exit(1);
+// ALLOWED_SENDERS plus the allowlist file, re-read when the file changes.
+const ALLOWED = new LiveAllowlist({ onChange: (handles) => console.log(`[agent] allowlist changed. now playing against: ${handles.join(", ") || "nobody"}`) });
+if (ALLOWED.handles().length === 0) {
+  if (!ALLOWED.file) {
+    console.error("Nobody is allowed: set ALLOWED_SENDERS, or leave ALLOWLIST_FILE unset and add people with `npm run allowlist`.");
+    process.exit(1);
+  }
+  console.log("[agent] the allowlist is empty: nobody is answered until someone is added with `npm run allowlist`.");
 }
 
 mkdirSync(DATA_DIR, { recursive: true });
@@ -90,7 +137,8 @@ function saveFixture(gameId: string, num: string, direction: "in" | "out" | "own
 }
 
 const bridge = await Bridge.connect();
-console.log(`[agent] connected. playing against: ${[...ALLOWED].join(", ")}${DRY_RUN ? " (DRY_RUN: nothing is sent)" : ""}`);
+console.log(`[agent] connected. playing against: ${ALLOWED.handles().join(", ") || "nobody yet"}${DRY_RUN ? " (DRY_RUN: nothing is sent)" : ""}`);
+console.log(ASK ? `[agent] EXPERIMENT: board-game moves are picked by ${LLM_MODEL}. 8 Ball still uses the engine.` : "[agent] moves are picked by the engine.");
 
 async function sendCard(chat: string, inbound: Balloon, replyTo: string, fields: Fields, ver: number, caption: string, subcaption: string): Promise<void> {
   const url = toMoveUrl(fields, ver);
@@ -191,7 +239,7 @@ async function handleBoardGame(event: Extract<BridgeEvent, { type: "message" }>,
   const slot = botSlot(fields);
   if (!slot || !Number.isInteger(num)) return console.log(`[agent] ${rules.title} card has player=${fields.get("player")} num=${fields.get("num")}, no reply`);
 
-  const decision = rules.decide(fields, slot, { botId: BOT_ID, timeMs: MOVE_TIME_MS });
+  const decision = await rules.decide(fields, slot, { botId: BOT_ID, pick: PICK });
   console.log(`[agent] ${rules.title} ${gameId} num ${num}: ${decision.log}`);
   if (decision.kind === "skip") return;
   if (decision.kind === "over") return void sessions.set(event.chat, { gameId, lastOutNum: num, over: true });
@@ -229,9 +277,9 @@ async function handleCard(event: Extract<BridgeEvent, { type: "message" }>, ball
   if (isInvite(fields)) {
     if (session) return console.log("[agent] already answered this invite");
     const board = emptyBoard();
-    const choice = chooseMove(board, 1, { timeMs: MOVE_TIME_MS });
+    const choice = await chooseColumn(board, 1);
     const reply = buildOpeningReply(fields, BOT_ID, choice.col, BOT_AVATAR);
-    console.log(`[agent] new game ${gameId}. opening in column ${choice.col + 1}`);
+    console.log(`[agent] new game ${gameId}. opening in column ${choice.col + 1} (${choice.note})`);
     await sendCard(event.chat, balloon, event.id, reply, ver, "Four in a Row", `Pigeon played column ${choice.col + 1} — your move`);
     sessions.set(event.chat, { gameId, lastOutNum: 2, boardAfterOurMove: drop(board, choice.col, 1), over: false });
     return;
@@ -261,12 +309,12 @@ async function handleCard(event: Extract<BridgeEvent, { type: "message" }>, ball
   if (parseWinner(fields) !== undefined || winsAt(afterHuman, move.col, move.row)) return finish("the opponent won. game over.");
   if (isFull(afterHuman)) return finish("the board is full. draw.");
 
-  const choice = chooseMove(afterHuman, botSlot, { timeMs: MOVE_TIME_MS });
+  const choice = await chooseColumn(afterHuman, botSlot);
   const afterBot = drop(afterHuman, choice.col, botSlot);
   const wins = winsAt(afterBot, choice.col, landingRow(afterHuman, choice.col));
   const reply = buildContinuation(fields, BOT_ID, afterHuman, choice.col, wins);
   console.log(
-    `[agent] playing column ${choice.col + 1} (depth ${choice.depth}, ${choice.nodes} nodes, ${Math.round(choice.ms)}ms)\n${ascii(afterBot)}`,
+    `[agent] playing column ${choice.col + 1} (${choice.note})\n${ascii(afterBot)}`,
   );
   await sendCard(event.chat, balloon, event.id, reply, ver, "Four in a Row", wins ? "Pigeon wins!" : `Pigeon played column ${choice.col + 1} — your move`);
   sessions.set(event.chat, { gameId, lastOutNum: Number(num) + 1, boardAfterOurMove: afterBot, over: wins || isFull(afterBot) });

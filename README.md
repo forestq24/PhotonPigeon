@@ -1,4 +1,4 @@
-# PhotonPigeon
+# StockPigeon
 
 An iMessage bot that plays GamePigeon games against a real person. You send it a game the way you would challenge a friend, and it plays back with real GamePigeon cards that open in your own GamePigeon app.
 
@@ -47,7 +47,7 @@ poolsim/  pool-sim (C++)
           OpenPigeon's pool physics as a command-line tool
 ```
 
-No LLM is involved in gameplay. Every move comes from a deterministic engine. The separate conversation agent uses Anthropic Haiku for text generation; one real API request is verified, and text delivery is verified against a fake bridge only. Conversational replies are separate text messages, never part of a game move.
+By default no LLM is involved in gameplay: every move comes from a deterministic engine. The `llm-player` branch adds an opt-in experiment in which a model picks the moves in the board games (see [LLM player](#llm-player-experiment)). The separate conversation agent uses Anthropic Haiku for text generation; one real API request is verified, and text delivery is verified against a fake bridge only. Conversational replies are separate text messages, never part of a game move.
 
 ## Repository layout
 
@@ -99,7 +99,8 @@ Agent settings (environment variables):
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `ALLOWED_SENDERS` | required | Phone numbers or emails the bot may play against, comma-separated |
+| `ALLOWED_SENDERS` | none | Phone numbers or emails the bot may play against, comma-separated. People added on the allowlist page are allowed as well |
+| `ALLOWLIST_FILE` | `~/.stockpigeon/allowlist.json` | The file the allowlist page edits. `none` turns it off, so only `ALLOWED_SENDERS` counts |
 | `DRY_RUN` | off | `1` decides and prints but sends nothing |
 | `MOVE_TIME_MS` | 300 | Four in a Row search budget |
 | `POOL_MAX_POTS` | 3 | 8 Ball: potting strokes per turn before the bot plays a deliberate miss. `0` removes the limit |
@@ -218,14 +219,50 @@ Each game folder has one `game.ts`: how to read a card, the rules, how positions
 
 **The chat agent follows these games too** (added October 4). It reads each card with the same board readers, reports a result only when the board itself is finished, and reports a lead only past a clear margin (discs, pieces, boxes, stones, area; for Gomoku, an unanswered five-in-a-row threat). Cards from games it does not follow, such as Cup Pong, are skipped.
 
+### The allowlist page
+
+```sh
+cd pigeonai && npm run allowlist      # prints a link; open it in a browser
+```
+
+A local page for adding and removing the people the bot may play and talk with, so nobody has to edit `ALLOWED_SENDERS` and restart four windows. It writes `~/.stockpigeon/allowlist.json` (outside the repository, readable by its owner only). The game agent, the chat observer and the delivery worker each re-read that file when it changes, within about a second, so a new person can play straight away and a removed person is ignored from the next message on.
+
+- The allowlist is `ALLOWED_SENDERS` plus the file. People named in `ALLOWED_SENDERS` are not shown on the page and can only be removed by restarting without them.
+- The page listens on this machine only, and every request needs the one-time token in the printed link, so another program or a web page cannot change the list. It never reads messages and never talks to the bridge.
+- A missing or damaged file allows nobody extra.
+- All processes share the one file. To give a process a narrower list (the delivery worker during a live test, say), start it with `ALLOWLIST_FILE=none` and its own `ALLOWED_SENDERS`.
+- Ten-digit numbers are taken to be US numbers; anything else needs its country code.
+
+Code: `pigeonai/src/allowlist.ts` (the list) and `pigeonai/src/allowlist-ui.ts` (the page).
+
+### LLM player (experiment)
+
+Branch `llm-player`, off by default. Started with `PLAYER=llm`, the agent asks a language model for each move in the turn-based games: Four in a Row, Gomoku, Reversi, Checkers, Dots & Boxes, Mancala and Filler. The point is an opponent that plays like a person rather than a search engine. 8 Ball is physics and always uses the engine.
+
+- **What the model does.** It is shown the rules in a few sentences, the board as text from its own side, and how to write a move. It answers through a forced tool call with a short line of reasoning and one move. When there are 64 legal moves or fewer they are listed and are the only answers the tool accepts.
+- **What the model cannot do.** It does not apply the move, build the card or decide the result; the game module does all of that, exactly as for the engine. An answer that is not a legal move gets one correction, then the engine plays that move. A slow or failing API also hands the move to the engine, so a game never stalls. A forced move costs no model call.
+- **What is sent.** The board, the rules summary and the legal moves. No phone numbers, player ids or message text.
+- **Code.** `src/llm/player.ts` (the player and the API call), `src/llm/connect4.ts` (Four in a Row in words), and a `brief` function in each board game. Every game takes a `pick` function; `enginePicker` and `modelPicker` are the two implementations.
+
+```sh
+read -s ANTHROPIC_API_KEY && export ANTHROPIC_API_KEY     # on its own line, then paste the key
+PLAYER=llm ALLOWED_SENDERS=+15551234567 npm run play
+```
+
+`LLM_MODEL` chooses the model. The default is `claude-haiku-4-5-20251001`, the same model the chat agent uses, chosen to keep each move fast and cheap. `claude-sonnet-4-6` is the next step up. `LLM_TIMEOUT_MS` is the wait per move (default 30000).
+
+**Status.** Verified with a mock model only: the real agent process played five games against a stand-in bridge, with the mock choosing legal moves or nonsense. No real model has picked a move yet, so how well one actually plays, and how long it takes, is unknown.
+
 ## Testing
 
-- `npm test` in `pigeonai/`: 25 tests. 16 cover Four in a Row and 8 Ball (rules, search, message builders). 9 cover the board games: the shared search and envelope, each game's rules against worked examples, and two bots playing every game to the end through encoded cards.
+- `npm test` in `pigeonai/`: 28 tests. 16 cover Four in a Row and 8 Ball (rules, search, message builders). 3 cover the LLM player (legal answers, corrections, engine fallback, the API request). 9 cover the board games: the shared search and envelope, each game's rules against worked examples, and two bots playing every game to the end through encoded cards.
 - Simulated opponents: the agent has been run end to end against stand-in bridges that play Four in a Row and 8 Ball and check every card it sends. On October 4 the same was done for the six board games: the real agent process was invited to each and played all six to the end. These scripts were throwaway and are not in the repo.
 - `spike/pool-fidelity.ts`: replays every captured 8 Ball turn through the engine and reports how far each ball lands from where the phone put it.
 - `logs/fixtures/`: every GamePigeon card from an allowed sender, and every card the bot sends, is saved decoded. Cards the account owner sends from their own phone are saved as `own`. These contain player IDs, so the directory is gitignored.
 
 ## How we got here
+
+The project was called PhotonPigeon until October 4, 2026, after the Photon plan it started from. It is now StockPigeon, the name the bot uses for itself. The old name survives in a few places that cannot simply be edited: the staging database (`photonpigeon-conversation-staging`) and, until its owner renames it, the GitHub repository.
 
 1. **Original plan: Photon.** The project was designed around Photon Spectrum Cloud carrying GamePigeon cards. On 2026-10-03 the Phase 0 test showed Photon's Pro plan blocks both directions: sending under GamePigeon's identity is rejected (`PERMISSION_DENIED`), and received third-party cards arrive with no URL.
 2. **Own transport.** Rather than switch providers, we built `bridge/` on rustpush. The same Phase 0 test passed on it the same day.

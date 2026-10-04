@@ -10,6 +10,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { DeliveryJournal, DeliveryWorker, outboxStore } from './delivery-worker.ts';
 import { imageResolver } from './reaction-images.ts';
 import { Recipients } from './recipients.ts';
+import { LiveAllowlist } from '../../pigeonai/src/allowlist.ts';
 import { openStore } from './store.ts';
 import { TextSender } from './text-sender.ts';
 import type { DbConnection } from './module_bindings/index';
@@ -17,8 +18,9 @@ import type { DbConnection } from './module_bindings/index';
 if (process.env.TAUNTER_SEND_ENABLED !== '1') {
   throw new Error('Messaging is off. Set TAUNTER_SEND_ENABLED=1 to let the conversation agent send texts.');
 }
-const allowed = (process.env.ALLOWED_SENDERS ?? '').split(',').map(s => s.trim()).filter(Boolean);
-if (!allowed.length || !process.env.SPACETIME_DATABASE) throw new Error('Configure ALLOWED_SENDERS and SPACETIME_DATABASE');
+// ALLOWED_SENDERS plus the allowlist file, re-read when it changes. Someone removed from it stops being reachable at once.
+const allowed = new LiveAllowlist({ onChange: handles => console.log(`[taunter] allowlist changed: ${handles.length} recipient(s) reachable`) });
+if (!process.env.SPACETIME_DATABASE || (!allowed.handles().length && !allowed.file)) throw new Error('Configure SPACETIME_DATABASE and an allowlist (ALLOWED_SENDERS or the allowlist file)');
 const dataDir = process.env.TAUNTER_DATA_DIR ?? './.data/observer';
 // Only people on this process's own allowlist can be reached, whatever the database holds.
 const recipients = new Recipients(dataDir, allowed);

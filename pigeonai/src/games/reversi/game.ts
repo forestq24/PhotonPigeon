@@ -10,8 +10,8 @@
  *  - The game ends when neither side can move; more discs wins. The last card adds `winner`.
  */
 import type { Fields } from "../../gamepigeon/vendor/envelope.ts";
-import { senderOutcome, type CardGame, type Decision, type Outcome } from "../common/card.ts";
-import { chooseMove, type Rules, type Slot } from "../common/search.ts";
+import { senderOutcome, type Brief, type CardGame, type Decision, type Outcome } from "../common/card.ts";
+import type { Rules, Slot } from "../common/search.ts";
 
 export const SIZE = 8;
 export interface State {
@@ -128,20 +128,38 @@ export const outcomeFor = (cells: Uint8Array, player: Slot): Outcome => {
   return diff > 0 ? "win" : diff < 0 ? "loss" : "draw";
 };
 
+/** A square as a person writes it: column letter then row number, a1 at the bottom-left. */
+export const squareLabel = (cell: number): string => `${String.fromCharCode(97 + (cell % SIZE))}${Math.floor(cell / SIZE) + 1}`;
+
+export function brief(s: State, slot: Slot): Brief {
+  const rows = Array.from({ length: SIZE }, (_, i) => {
+    const y = SIZE - 1 - i;
+    return `${y + 1} ${Array.from({ length: SIZE }, (_, x) => { const c = s.cells[y * SIZE + x]; return c === 0 ? "." : c === slot ? "X" : "O"; }).join(" ")}`;
+  });
+  return {
+    game: "Reversi",
+    rules: "Reversi (Othello) on an 8 x 8 board. A move places one of your discs so that it traps one or more straight lines of the opponent's discs between the new disc and another of yours; every trapped disc flips to your colour. When the board is full or nobody can move, the player with more discs wins. Corners can never be flipped back.",
+    board: `X = your discs (${count(s.cells, slot)}), O = the opponent's discs (${count(s.cells, (3 - slot) as Slot)}), . = empty\n  a b c d e f g h\n${rows.join("\n")}`,
+    moveFormat: "a square, column letter then row number, like c4",
+  };
+}
+
 export const reversi: CardGame = {
   game: "reversi",
   title: "Reversi",
-  decide(fields, slot, ctx): Decision {
+  async decide(fields, slot, ctx): Promise<Decision> {
     const { state, problems } = readCard(fields);
     if (problems.length > 0) return { kind: "skip", log: `cannot use this card, no reply:\n  ${problems.join("\n  ")}` };
     if (senderOutcome(fields) !== undefined || state.over) return { kind: "over", log: "the game is over on the opponent's card." };
     if (state.toMove !== slot) return { kind: "skip", log: "the opponent still has the move on this card, no reply" };
     const before = state.cells;
     const moves: string[] = [];
+    const notes: string[] = [];
     let now = state;
     // Keep moving for as long as the opponent has to pass; it all goes in one card.
     while (!now.over && now.toMove === slot) {
-      const choice = chooseMove(rules, now, { timeMs: ctx.timeMs });
+      const choice = await ctx.pick({ rules, state: now, legal: legalMoves(now.cells, slot), label: squareLabel, brief: brief(now, slot) });
+      notes.push(choice.note);
       moves.push(`move:${choice.move % SIZE},${Math.floor(choice.move / SIZE)},${slot}`);
       now = play(now, choice.move);
     }
@@ -150,7 +168,7 @@ export const reversi: CardGame = {
       kind: "reply",
       updates: { replay: [`board:${Array.from(before).join(",")}`, ...moves, `board:${Array.from(now.cells).join(",")}`].join("|") },
       outcome,
-      log: `playing ${moves.map((m) => m.slice(5, 8)).join(" then ")} (${count(now.cells, slot)}-${count(now.cells, (3 - slot) as Slot)})${outcome ? `. game over: ${outcome}` : ""}\n${ascii(now.cells)}`,
+      log: `playing ${moves.map((m) => m.slice(5, 8)).join(" then ")} (${notes.join("; ")}). discs ${count(now.cells, slot)}-${count(now.cells, (3 - slot) as Slot)}${outcome ? `. game over: ${outcome}` : ""}\n${ascii(now.cells)}`,
     };
   },
 };

@@ -8,17 +8,19 @@ import { hashPlayer, loadSalt, normalize } from './observer.ts';
  */
 export class Recipients {
   private salt: Buffer;
-  private allowed: string[];
+  private allowed: () => string[];
 
-  constructor(dataDir: string, allowed: string[]) {
+  /** `allowed` is a fixed list, or a live allowlist whose current handles are used at each send. */
+  constructor(dataDir: string, allowed: string[] | { handles(): string[] }) {
     // The observer owns the salt. Without it no player ID could have been produced, so refuse.
     this.salt = loadSalt(dataDir, false);
-    this.allowed = [...new Set(allowed.map(normalize))];
+    const fixed = Array.isArray(allowed) ? [...new Set(allowed.map(normalize))] : undefined;
+    this.allowed = fixed ? () => fixed : () => [...new Set((allowed as { handles(): string[] }).handles().map(normalize))];
   }
 
   /** The one allowlisted handle for this player, or undefined if there is none or more than one. */
   resolve(playerId: string): string | undefined {
-    const matches = this.allowed.filter(handle => hashPlayer(this.salt, handle) === playerId);
+    const matches = this.allowed().filter(handle => hashPlayer(this.salt, handle) === playerId);
     return matches.length === 1 ? matches[0] : undefined;
   }
 }

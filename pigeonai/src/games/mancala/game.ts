@@ -14,8 +14,8 @@
  *    its own store, and the fuller store wins.
  */
 import type { Fields } from "../../gamepigeon/vendor/envelope.ts";
-import { field, senderOutcome, type CardGame, type Decision, type Outcome } from "../common/card.ts";
-import { chooseMove, type Rules, type Slot } from "../common/search.ts";
+import { field, senderOutcome, type Brief, type CardGame, type Decision, type Outcome } from "../common/card.ts";
+import type { Rules, Slot } from "../common/search.ts";
 
 export type Pits = number[][];
 export interface State {
@@ -104,19 +104,39 @@ export const ascii = (pits: Pits): string => {
   return `   ${[12, 11, 10, 9, 8, 7].map(n).join(" ")}\n${n(13)}                   ${n(6)}\n   ${[0, 1, 2, 3, 4, 5].map(n).join(" ")}`;
 };
 
+/** A pit as a person writes it: 1 to 6 on the mover's own side, 6 being next to their store. */
+export const pitLabel = (pit: number): string => String((pit % 7) + 1);
+
+export function brief(s: State, slot: Slot): Brief {
+  const other = (3 - slot) as Slot;
+  const counts = (who: Slot): string => ownPits(who).map((i, n) => `pit ${n + 1}: ${s.pits[i]!.length}`).join(", ");
+  return {
+    game: s.avalanche ? "Mancala (avalanche)" : "Mancala (capture)",
+    rules: "Mancala. Each side has six pits, numbered 1 to 6, and a store after pit 6. A move picks up every stone in one of your non-empty pits and drops them one at a time into the following pits: your higher-numbered pits, then your store, then the opponent's pits 1 to 6, then your pit 1 again. The opponent's store is skipped. If the last stone lands in your store you move again. "
+      + (s.avalanche
+        ? "Avalanche: if the last stone lands in a pit that already held stones, you pick up that whole pit and keep sowing; the turn ends when the last stone lands in an empty pit. "
+        : "Capture: if the last stone lands in an empty pit on your own side and the opposite pit holds stones, you capture that stone and all the opposite stones into your store. Your pit n is opposite the opponent's pit 7 - n. ")
+      + "The game ends when either side's six pits are empty; the other player keeps the stones left on their side. The fuller store wins.",
+    board: `Your pits: ${counts(slot)}. Your store: ${s.pits[store(slot)]!.length}.\nOpponent's pits (numbered from their side): ${counts(other)}. Opponent's store: ${s.pits[store(other)]!.length}.`,
+    moveFormat: "the number of one of your pits, 1 to 6",
+  };
+}
+
 export const mancala: CardGame = {
   game: "mancala",
   title: "Mancala",
-  decide(fields, slot, ctx): Decision {
+  async decide(fields, slot, ctx): Promise<Decision> {
     const { pits, board } = readCard(fields);
     if (!pits) return { kind: "skip", log: "cannot read a 14-pit board from this card, no reply" };
     const mode = field(fields, "mode") ?? "";
     let now: State = { pits, toMove: slot, avalanche: mode === "an" || mode === "ah", over: false };
     if (senderOutcome(fields) !== undefined || sideEmpty(pits, 1) || sideEmpty(pits, 2)) return { kind: "over", log: "the game is over on the opponent's card." };
     const moves: string[] = [];
+    const notes: string[] = [];
     // Extra moves belong to the same turn and travel in the same card.
     while (!now.over && now.toMove === slot) {
-      const choice = chooseMove(rules, now, { timeMs: ctx.timeMs });
+      const choice = await ctx.pick({ rules, state: now, legal: rules.moves(now), label: pitLabel, brief: brief(now, slot) });
+      notes.push(choice.note);
       moves.push(`move:${slot},${choice.move - (slot === 1 ? 0 : 7)}`);
       now = sow(now, choice.move);
     }
@@ -126,7 +146,7 @@ export const mancala: CardGame = {
       kind: "reply",
       updates: { replay: [`board:${board}`, ...moves, `board:${formatBoard(now.pits)}`].join("|") },
       outcome,
-      log: `sowing pit ${moves.map((m) => Number(m.split(",")[1]) + 1).join(", then ")}. stores: us ${now.pits[store(slot)]!.length}, them ${now.pits[store((3 - slot) as Slot)]!.length}${outcome ? `. game over: ${outcome}` : ""}\n${ascii(now.pits)}`,
+      log: `sowing pit ${moves.map((m) => Number(m.split(",")[1]) + 1).join(", then ")} (${notes.join("; ")}). stores: us ${now.pits[store(slot)]!.length}, them ${now.pits[store((3 - slot) as Slot)]!.length}${outcome ? `. game over: ${outcome}` : ""}\n${ascii(now.pits)}`,
     };
   },
 };

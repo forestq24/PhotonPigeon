@@ -184,7 +184,7 @@ try {
   await settle();
   const job = await connection.procedures.claimExternalProbe({ id: live.id });
   await connection.reducers.completeExternalProbe({ id: live.id, token: job!.token, response: '', fallback: true });
-  daemon = spawn('npx', ['tsx', 'src/deliver.ts'], { stdio: 'ignore', env: { ...process.env, TAUNTER_SEND_ENABLED: '1', TAUNTER_IMAGES_ENABLED: '1', ALLOWED_SENDERS: HANDLE,
+  daemon = spawn('npx', ['tsx', 'src/deliver.ts'], { stdio: 'ignore', env: { ...process.env, ALLOWLIST_FILE: 'none', TAUNTER_SEND_ENABLED: '1', TAUNTER_IMAGES_ENABLED: '1', ALLOWED_SENDERS: HANDLE,
     SPACETIME_URI: uri, SPACETIME_DATABASE: database, TAUNTER_TOKEN_FILE: tokenFile, TAUNTER_DATA_DIR: dataDir, BRIDGE_SOCKET: socketPath } });
   for (let i = 0; i < 100 && outbox(`${live.id}:image`)?.status !== 'accepted'; i++) await settle();
   assert.deepEqual(requests.map(request => request.op), ['send_text', 'send_image'], 'one text, then one image, and nothing else');

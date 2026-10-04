@@ -1,4 +1,4 @@
-//! pigeon-bridge: a local iMessage transport for PhotonPigeon.
+//! pigeon-bridge: a local iMessage transport for StockPigeon.
 //!
 //! Signs a dedicated Apple ID into iMessage through rustpush (via Corten's
 //! wrapper) and exposes send/receive, including app balloons such as

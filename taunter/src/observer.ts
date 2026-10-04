@@ -38,16 +38,19 @@ export const hashPlayer = (salt: Buffer, chat: string): string => createHmac('sh
 export class ObserverState {
   readonly continuity = new Continuity();
   readonly records: StoredRecord[] = [];
-  private allowed: Set<string>;
+  private allowed: { has(handle: string): boolean };
   private file: string;
   private salt: Buffer;
   private latestEpoch?: string;
   private seenText = new Set<string>();
   private ordinals = new Map<string, number>();
 
-  constructor(dir: string, allowed: string[]) {
-    if (!allowed.length) throw new Error('ALLOWED_SENDERS is required');
-    this.allowed = new Set(allowed.map(normalize));
+  /** `allowed` is a fixed list, or a live allowlist that is asked again for every message. */
+  constructor(dir: string, allowed: string[] | { has(handle: string): boolean }) {
+    if (Array.isArray(allowed)) {
+      if (!allowed.length) throw new Error('ALLOWED_SENDERS is required');
+      this.allowed = new Set(allowed.map(normalize));
+    } else this.allowed = allowed;
     mkdirSync(dir, { recursive: true, mode: 0o700 }); chmodSync(dir, 0o700);
     this.file = join(dir, 'observations.jsonl');
     this.salt = loadSalt(dir, true);

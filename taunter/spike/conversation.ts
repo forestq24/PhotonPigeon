@@ -123,7 +123,7 @@ const stored = () => JSON.stringify([[...connection.db.myOutbox.iter()], [...con
 
 // ---------------------------------------------------------------- daemons
 const daemons = new Map<string, { child: ChildProcess; log: string[] }>();
-const env = (allowed = EVERYONE) => ({ ...process.env, ALLOWED_SENDERS: allowed.join(','), BRIDGE_SOCKET: socketPath, TAUNTER_DATA_DIR: dataDir,
+const env = (allowed = EVERYONE) => ({ ...process.env, ALLOWLIST_FILE: 'none', ALLOWED_SENDERS: allowed.join(','), BRIDGE_SOCKET: socketPath, TAUNTER_DATA_DIR: dataDir,
   TAUNTER_TOKEN_FILE: tokenFile, SPACETIME_URI: uri, SPACETIME_DATABASE: database, ANTHROPIC_API_KEY: 'synthetic-e2e-key', ANTHROPIC_ENDPOINT: endpoint,
   TAUNTER_SEND_ENABLED: '1', TAUNTER_SEND_TIMEOUT_MS: '1500' });
 const SCRIPTS: Record<string, string> = { observe: 'src/index.ts', generate: 'src/generate.ts', deliver: 'src/deliver.ts' };
