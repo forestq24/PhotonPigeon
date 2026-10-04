@@ -1,8 +1,9 @@
 /**
- * PhotonPigeon agent: plays Four in a Row on GamePigeon, over pigeon-bridge.
+ * PhotonPigeon agent: plays Four in a Row and 8 Ball on GamePigeon, over pigeon-bridge.
  *
  * For each GamePigeon card from an allowed sender: decode the game, apply their move,
  * pick ours with the engine, and send it back as a GamePigeon card. No LLM is involved.
+ * 8 Ball needs the pool simulator built first (poolsim/scripts/setup.sh).
  *
  * The bridge may be signed into a personal Apple ID and so sees every iMessage sent to that
  * person. Only senders in ALLOWED_SENDERS are ever decoded, logged, or answered.
@@ -12,6 +13,8 @@
  *      DRY_RUN=1 decide and print, but send nothing · MOVE_TIME_MS=<n> search budget (default 300)
  *      REPLY_STYLE=plain|session how follow-up moves are sent (default plain; session attaches each
  *        move to the opponent's card, the way real clients do)
+ *      POOL_MAX_POTS=<n> 8 Ball: potting strokes per turn before the bot plays a deliberate miss
+ *        (default 3, so the opponent gets to play; 0 = no limit)
  *      DATA_DIR (default ./data) bot identity · LOG_DIR (default ./logs) per-message fixtures
  *      BRIDGE_SOCKET=<path>
  */
@@ -21,6 +24,10 @@ import { join } from "node:path";
 import { ascii, drop, emptyBoard, isFull, landingRow, validate, winsAt, type Cell, type Slot } from "./games/connect4/rules.ts";
 import { chooseMove } from "./games/connect4/strategy.ts";
 import { buildContinuation, buildOpeningReply, isInvite, parseReplay, parseWinner } from "./games/connect4/turn.ts";
+import { POCKETS, type Group } from "./games/pool/rules.ts";
+import { PoolSim } from "./games/pool/sim.ts";
+import { DEFAULT_RACK, buildPoolReply, playTurn } from "./games/pool/turn.ts";
+import { parseBalls, parsePoolReplay } from "./games/pool/wire.ts";
 import { parse, toMoveUrl, type Fields } from "./gamepigeon/vendor/envelope.ts";
 import { Bridge, type Balloon, type BridgeEvent } from "./transport/bridge.ts";
 
@@ -32,6 +39,7 @@ const BOT_AVATAR =
 const DRY_RUN = process.env.DRY_RUN === "1";
 const MOVE_TIME_MS = Math.min(Number(process.env.MOVE_TIME_MS ?? 300), 2000);
 const SESSION_REPLIES = process.env.REPLY_STYLE === "session";
+const POOL_MAX_POTS = Number(process.env.POOL_MAX_POTS ?? 3);
 const DATA_DIR = process.env.DATA_DIR ?? "./data";
 const FIXTURE_DIR = join(process.env.LOG_DIR ?? "./logs", "fixtures");
 
@@ -61,13 +69,14 @@ interface Session {
   gameId: string;
   /** Number of the last card we sent. Anything at or below it from the opponent is stale. */
   lastOutNum: number;
-  /** The position after our last move: what the opponent's next card should start from. */
-  boardAfterOurMove: Cell[];
+  /** Four in a Row: the position after our last move, which the opponent's next card should start from. */
+  boardAfterOurMove?: Cell[];
   over: boolean;
 }
 const sessions = new Map<string, Session>();
 
-function saveFixture(gameId: string, num: string, direction: "in" | "out", fields: Fields, balloon: Balloon): void {
+/** "own" is a card our account sent from another device, e.g. a move played by hand on the owner's iPhone. */
+function saveFixture(gameId: string, num: string, direction: "in" | "out" | "own", fields: Fields, balloon: Balloon): void {
   const record = {
     at: new Date().toISOString(),
     direction,
@@ -80,7 +89,7 @@ function saveFixture(gameId: string, num: string, direction: "in" | "out", field
 const bridge = await Bridge.connect();
 console.log(`[agent] connected. playing against: ${[...ALLOWED].join(", ")}${DRY_RUN ? " (DRY_RUN: nothing is sent)" : ""}`);
 
-async function sendCard(chat: string, inbound: Balloon, replyTo: string, fields: Fields, ver: number, subcaption: string): Promise<void> {
+async function sendCard(chat: string, inbound: Balloon, replyTo: string, fields: Fields, ver: number, caption: string, subcaption: string): Promise<void> {
   const url = toMoveUrl(fields, ver);
   // Never send a card we could not read back ourselves.
   const back = parse(url).fields;
@@ -94,16 +103,77 @@ async function sendCard(chat: string, inbound: Balloon, replyTo: string, fields:
     iconB64: inbound.iconB64,
     session: inbound.session,
     url,
-    caption: "Four in a Row",
+    caption,
     subcaption,
     ldText: inbound.ldText,
     live: inbound.live ?? false,
   };
   saveFixture(fields.get("id")!, fields.get("num")!, "out", fields, card);
-  if (DRY_RUN) return console.log(`[agent] DRY_RUN, not sending: ${subcaption}`);
+  const label = subcaption || caption;
+  if (DRY_RUN) return console.log(`[agent] DRY_RUN, not sending: ${label}`);
   const t0 = performance.now();
   const id = await bridge.sendBalloon(chat, SESSION_REPLIES ? { ...card, replyTo } : card);
-  console.log(`[agent] sent "${subcaption}" in ${Math.round(performance.now() - t0)}ms (id ${id})`);
+  console.log(`[agent] sent "${label}" in ${Math.round(performance.now() - t0)}ms (id ${id})`);
+}
+
+let poolSim: PoolSim | undefined;
+
+/** 8 Ball. A turn is every stroke we get, so one inbound card can produce several strokes in one reply. */
+async function handlePool(event: Extract<BridgeEvent, { type: "message" }>, balloon: Balloon, fields: Fields, ver: number): Promise<void> {
+  const gameId = fields.get("id")!;
+  const num = Number(fields.get("num"));
+  const known = sessions.get(event.chat);
+  const session = known?.gameId === gameId ? known : undefined;
+  if (session && num <= session.lastOutNum) return console.log(`[agent] stale 8 Ball card (num ${num}), ignoring`);
+  if (session?.over) return console.log("[agent] that 8 Ball game is over, ignoring");
+
+  const slot = (3 - Number(fields.get("player"))) as 1 | 2;
+  if (slot !== 1 && slot !== 2) return console.log(`[agent] 8 Ball card has player=${fields.get("player")}, no reply`);
+  const end = (line: string): void => {
+    sessions.set(event.chat, { gameId, lastOutNum: num, over: true });
+    console.log(`[agent] ${line}`);
+  };
+
+  // An invite carries no table: the invited player racks and breaks.
+  const replay = fields.get("replay");
+  let before = parseBalls(DEFAULT_RACK);
+  let group: Group | undefined;
+  if (replay !== undefined) {
+    const their = parsePoolReplay(replay);
+    if (their.unknown.length > 0) console.log(`[agent] 8 Ball card has keys we do not know: ${their.unknown.join(", ")}`);
+    if (their.win !== undefined || fields.has("winner")) return end(their.win === -1 ? "the opponent lost the 8 Ball game. we win." : "the opponent won the 8 Ball game.");
+    if (!their.after || !their.after.some((b) => b.number === 0)) return console.log("[agent] cannot read the table from this 8 Ball card, no reply");
+    before = their.after;
+    group = their.stripes === undefined || their.stripes === 0 ? undefined : their.stripes === slot ? "stripes" : "solids";
+    console.log(
+      `[agent] 8 Ball ${gameId} num ${num}: opponent played ${their.hits.length} stroke(s)${their.ballInHand ? " and fouled" : ""}. ` +
+        `${before.length - 1} balls left. we are ${group ?? "undecided"}`,
+    );
+  } else {
+    console.log(`[agent] new 8 Ball game ${gameId}. we break`);
+  }
+
+  try {
+    poolSim ??= new PoolSim();
+  } catch (err) {
+    return console.log(`[agent] 8 Ball needs the pool simulator: ${err instanceof Error ? err.message : err}`);
+  }
+  const t0 = performance.now();
+  const turn = await playTurn(poolSim, { before, slot, group, isBreak: replay === undefined, maxPots: POOL_MAX_POTS });
+  const sims = turn.strokes.reduce((total, s) => total + s.simulated, 0);
+  console.log(`[agent] planned ${turn.strokes.length} stroke(s) in ${Math.round(performance.now() - t0)}ms (${sims} simulated):`);
+  for (const { stroke, pocketed, foul } of turn.strokes) {
+    const pocket = stroke.calledPocket === undefined ? "" : ` calling pocket ${stroke.calledPocket} (${POCKETS[stroke.calledPocket]?.x}, ${POCKETS[stroke.calledPocket]?.y})`;
+    console.log(`[agent]   dir ${stroke.dir.toFixed(3)} power ${stroke.power}${pocket}: ${pocketed.length ? `pocketed ${pocketed.join(", ")}` : "nothing pocketed"}${foul ? ", FOUL" : ""}`);
+  }
+
+  const reply = buildPoolReply(fields, BOT_ID, BOT_AVATAR, turn);
+  // Real cards say "Your move." and, on the winning turn, "I won!".
+  await sendCard(event.chat, balloon, event.id, reply, ver, turn.win === 1 ? "I won!" : "Your move.", "");
+  sessions.set(event.chat, { gameId, lastOutNum: num + 1, over: turn.win !== undefined });
+  if (turn.win === 1) console.log("[agent] we won the 8 Ball game.");
+  else if (turn.win === -1) console.log("[agent] we lost the 8 Ball game (the 8 went down when it should not have).");
+  else console.log(`[agent] ${turn.after.length - 1} balls left. we are ${turn.group ?? "undecided"}${turn.foul ? ". we fouled: opponent has ball in hand" : ""}`);
 }
 
 async function handleCard(event: Extract<BridgeEvent, { type: "message" }>, balloon: Balloon): Promise<void> {
@@ -112,9 +182,17 @@ async function handleCard(event: Extract<BridgeEvent, { type: "message" }>, ball
   const gameId = fields.get("id");
   const num = fields.get("num") ?? "";
   if (!gameId) return console.log("[agent] card has no game id, ignoring");
+  // Names arrive percent-encoded ("8%20Ball").
+  const gameName = (fields.get("game_name") ?? game ?? "unknown game").replace(/%20/g, " ");
   if (fields.get("sender") === BOT_ID) return; // our own card echoed back
+  if (event.fromMe) {
+    // Played by hand on another of our devices. Record it as ground truth; never answer it.
+    saveFixture(gameId, num, "own", fields, balloon);
+    return console.log(`[agent] recorded our own ${gameName} card (num ${num}), sent from another device`);
+  }
   saveFixture(gameId, num, "in", fields, balloon);
-  if (game !== "connect") return console.log(`[agent] ${fields.get("game_name") ?? game} is not supported yet, no reply`);
+  if (game === "pool") return handlePool(event, balloon, fields, ver);
+  if (game !== "connect") return console.log(`[agent] recorded a ${gameName} card (num ${num}). not supported yet, no reply`);
 
   // Our record of this game, if this card continues the one we are already playing in this chat.
   const known = sessions.get(event.chat);
@@ -126,7 +204,7 @@ async function handleCard(event: Extract<BridgeEvent, { type: "message" }>, ball
     const choice = chooseMove(board, 1, { timeMs: MOVE_TIME_MS });
     const reply = buildOpeningReply(fields, BOT_ID, choice.col, BOT_AVATAR);
     console.log(`[agent] new game ${gameId}. opening in column ${choice.col + 1}`);
-    await sendCard(event.chat, balloon, event.id, reply, ver, `Pigeon played column ${choice.col + 1} — your move`);
+    await sendCard(event.chat, balloon, event.id, reply, ver, "Four in a Row", `Pigeon played column ${choice.col + 1} — your move`);
     sessions.set(event.chat, { gameId, lastOutNum: 2, boardAfterOurMove: drop(board, choice.col, 1), over: false });
     return;
   }
@@ -140,7 +218,7 @@ async function handleCard(event: Extract<BridgeEvent, { type: "message" }>, ball
   if (move.player !== humanSlot) problems.push(`move is by player ${move.player} but the card says player ${humanSlot}`);
   if (move.row !== landingRow(move.boardBefore, move.col)) problems.push(`move lands at row ${move.row}, which is not where a disc would fall`);
   if (problems.length > 0) return console.log(`[agent] cannot use this card, no reply:\n  ${problems.join("\n  ")}`);
-  if (session && session.boardAfterOurMove.join() !== move.boardBefore.join()) {
+  if (session?.boardAfterOurMove && session.boardAfterOurMove.join() !== move.boardBefore.join()) {
     console.log("[agent] the opponent's board does not match what we last sent. playing from theirs.");
   }
 
@@ -162,7 +240,7 @@ async function handleCard(event: Extract<BridgeEvent, { type: "message" }>, ball
   console.log(
     `[agent] playing column ${choice.col + 1} (depth ${choice.depth}, ${choice.nodes} nodes, ${Math.round(choice.ms)}ms)\n${ascii(afterBot)}`,
   );
-  await sendCard(event.chat, balloon, event.id, reply, ver, wins ? "Pigeon wins!" : `Pigeon played column ${choice.col + 1} — your move`);
+  await sendCard(event.chat, balloon, event.id, reply, ver, "Four in a Row", wins ? "Pigeon wins!" : `Pigeon played column ${choice.col + 1} — your move`);
   sessions.set(event.chat, { gameId, lastOutNum: Number(num) + 1, boardAfterOurMove: afterBot, over: wins || isFull(afterBot) });
   if (wins) console.log("[agent] we won. game over.");
   else if (isFull(afterBot)) console.log("[agent] the board is full. draw.");
@@ -175,11 +253,12 @@ const queues = new Map<string, Promise<void>>();
 bridge.onEvent((event) => {
   if (event.type === "ready") return console.log("[agent] bridge handles:", event.handles.join(", "));
   // The allowlist comes before anything that reads message content.
-  if (event.isGroup || event.fromMe || !ALLOWED.has(event.chat.toLowerCase())) return;
+  if (event.isGroup || !ALLOWED.has(event.chat.toLowerCase())) return;
   if (event.type === "send_error") return console.error(`[agent] a send failed: status ${event.status} ${event.statusText ?? ""}`);
   if (event.type !== "message" || handled.has(event.id)) return;
   handled.add(event.id);
   const { balloon } = event;
+  // Everything except game cards is ignored, including the account owner's own texts.
   if (!balloon?.bundleId.endsWith(GP_BUNDLE_SUFFIX)) return;
   // Cards queued while the bridge was offline may be hours old; never answer them.
   if (event.stored) return console.log("[agent] ignoring a card that arrived while offline");
