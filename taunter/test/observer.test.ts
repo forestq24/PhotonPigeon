@@ -25,6 +25,23 @@ test('allowlist precedes payload decoding; private journal contains no unrelated
     assert.equal(restarted.ingest({ type: 'message', stream_epoch: 'a', stream_seq: 2 }), undefined);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+test('cards from games the agent does not follow are skipped without breaking the record', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'taunter-'));
+  try {
+    const state = new ObserverState(dir, ['synthetic@invalid.test']);
+    const card = (seq: number, fields: Record<string, string>) => state.ingest({ type: 'message', chat: 'mailto:synthetic@invalid.test', from_me: false, stream_epoch: 'a', stream_seq: seq,
+      balloon: { url: toMoveUrl(new Map(Object.entries(fields)), 52), bundle_id: 'com.gamerdelights.gamepigeon.ext' } });
+    card(1, { game: 'connect', id: 'followed', num: '1', player: '2', sender: 'HUMAN', player2: 'HUMAN' });
+    card(2, { game: 'beer', id: 'other', num: '1', player: '2', sender: 'HUMAN', player2: 'HUMAN' });
+    assert.equal(state.continuity.games.size, 1, 'the Cup Pong card is not an observation');
+    assert.equal(state.records.some(record => record.gap), false, 'and it is not a gap either');
+    assert.equal([...state.continuity.games.values()][0]!.complete, true, 'the followed game is still complete');
+    // A followed game whose card cannot be used is still a break.
+    card(3, { game: 'connect', id: 'followed', num: 'x', player: '2', sender: 'HUMAN', player2: 'HUMAN' });
+    assert.equal(state.records.at(-1)!.gap, 'Unusable allowlisted game observation');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('observer requests replay only and merges successful outgoing observations without sending moves', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'taunter-socket-'));
   const path = join(dir, 'bridge.sock');

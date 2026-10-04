@@ -38,6 +38,8 @@ fn now_ms() -> u64 {
 }
 
 const STATE_FILE: &str = "state.json";
+/// Largest image `send_image` accepts, before base64.
+const MAX_IMAGE_BYTES: usize = 2 * 1024 * 1024;
 const APS_CHECKPOINT_SECS: u64 = 300;
 
 // ---------------------------------------------------------------------------
@@ -449,6 +451,36 @@ impl Bridge {
                 let id = self
                     .client
                     .send_message(conversation, text, None, handle, None, None, None)
+                    .await
+                    .map_err(|e| e.to_string())?;
+                Ok(json!({ "id": id }))
+            }
+            "send_image" => {
+                // A still image as an ordinary attachment. Bytes arrive inline, so the bridge
+                // never opens a path chosen by a client.
+                let mime = str_opt("mime").ok_or("missing mime")?;
+                let uti = match mime.as_str() {
+                    "image/jpeg" => "public.jpeg",
+                    "image/png" => "public.png",
+                    "image/gif" => "com.compuserve.gif",
+                    _ => return Err("unsupported image type".into()),
+                };
+                let name = str_opt("name").ok_or("missing name")?;
+                if name.is_empty()
+                    || name.len() > 128
+                    || !name.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
+                {
+                    return Err("invalid name".into());
+                }
+                let data = base64::engine::general_purpose::STANDARD
+                    .decode(req["data_b64"].as_str().ok_or("missing data_b64")?)
+                    .map_err(|e| format!("data_b64: {e}"))?;
+                if data.is_empty() || data.len() > MAX_IMAGE_BYTES {
+                    return Err("invalid image size".into());
+                }
+                let id = self
+                    .client
+                    .send_attachment(conversation, data, mime, uti.to_string(), name, handle, None, None, None)
                     .await
                     .map_err(|e| e.to_string())?;
                 Ok(json!({ "id": id }))

@@ -1,5 +1,6 @@
 /**
- * PhotonPigeon agent: plays Four in a Row and 8 Ball on GamePigeon, over pigeon-bridge.
+ * PhotonPigeon agent: plays Four in a Row, 8 Ball and the board games in games/registry.ts
+ * on GamePigeon, over pigeon-bridge.
  *
  * For each GamePigeon card from an allowed sender: decode the game, apply their move,
  * pick ours with the engine, and send it back as a GamePigeon card. No LLM is involved.
@@ -28,6 +29,8 @@ import { POCKETS, type Group } from "./games/pool/rules.ts";
 import { PoolSim } from "./games/pool/sim.ts";
 import { DEFAULT_RACK, buildPoolReply, playTurn } from "./games/pool/turn.ts";
 import { parseBalls, parsePoolReplay } from "./games/pool/wire.ts";
+import { botSlot, buildReply, captionFor } from "./games/common/card.ts";
+import { BOARD_GAMES } from "./games/registry.ts";
 import { parse, toMoveUrl, type Fields } from "./gamepigeon/vendor/envelope.ts";
 import { Bridge, type Balloon, type BridgeEvent } from "./transport/bridge.ts";
 
@@ -176,6 +179,30 @@ async function handlePool(event: Extract<BridgeEvent, { type: "message" }>, ball
   else console.log(`[agent] ${turn.after.length - 1} balls left. we are ${turn.group ?? "undecided"}${turn.foul ? ". we fouled: opponent has ball in hand" : ""}`);
 }
 
+/** The turn-based board games in games/registry.ts: one card in, one move out. */
+async function handleBoardGame(event: Extract<BridgeEvent, { type: "message" }>, balloon: Balloon, fields: Fields, ver: number): Promise<void> {
+  const rules = BOARD_GAMES.get(fields.get("game") ?? "")!;
+  const gameId = fields.get("id")!;
+  const num = Number(fields.get("num"));
+  const known = sessions.get(event.chat);
+  const session = known?.gameId === gameId ? known : undefined;
+  if (session && num <= session.lastOutNum) return console.log(`[agent] stale ${rules.title} card (num ${num}), ignoring`);
+  if (session?.over) return console.log(`[agent] that ${rules.title} game is over, ignoring`);
+  const slot = botSlot(fields);
+  if (!slot || !Number.isInteger(num)) return console.log(`[agent] ${rules.title} card has player=${fields.get("player")} num=${fields.get("num")}, no reply`);
+
+  const decision = rules.decide(fields, slot, { botId: BOT_ID, timeMs: MOVE_TIME_MS });
+  console.log(`[agent] ${rules.title} ${gameId} num ${num}: ${decision.log}`);
+  if (decision.kind === "skip") return;
+  if (decision.kind === "over") return void sessions.set(event.chat, { gameId, lastOutNum: num, over: true });
+  const reply = buildReply(fields, BOT_ID, BOT_AVATAR, decision.updates, decision.outcome);
+  // Every field must survive encoding, not only the ones Four in a Row and 8 Ball use.
+  const back = parse(toMoveUrl(reply, ver)).fields;
+  for (const [key, value] of reply) if (back.get(key) !== value) throw new Error(`pre-send round trip mismatch on ${key}`);
+  await sendCard(event.chat, balloon, event.id, reply, ver, captionFor(decision.outcome), "");
+  sessions.set(event.chat, { gameId, lastOutNum: num + 1, over: decision.outcome !== undefined });
+}
+
 async function handleCard(event: Extract<BridgeEvent, { type: "message" }>, balloon: Balloon): Promise<void> {
   const { fields, ver } = parse(balloon.url);
   const game = fields.get("game");
@@ -192,6 +219,7 @@ async function handleCard(event: Extract<BridgeEvent, { type: "message" }>, ball
   }
   saveFixture(gameId, num, "in", fields, balloon);
   if (game === "pool") return handlePool(event, balloon, fields, ver);
+  if (BOARD_GAMES.has(game ?? "")) return handleBoardGame(event, balloon, fields, ver);
   if (game !== "connect") return console.log(`[agent] recorded a ${gameName} card (num ${num}). not supported yet, no reply`);
 
   // Our record of this game, if this card continues the one we are already playing in this chat.

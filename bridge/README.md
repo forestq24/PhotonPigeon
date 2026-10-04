@@ -83,6 +83,7 @@ Commands to the bridge, each with a numeric `req`:
 | `op` | Fields |
 |---|---|
 | `send_text` | `chat`, `text` |
+| `send_image` | `chat`, `name` (letters, digits, `.`, `_`, `-`), `mime` (`image/jpeg`, `image/png` or `image/gif`), `data_b64` (at most 2 MB before encoding). Sent as an ordinary attachment. Added October 4; not yet compiled or run, so rerun `scripts/setup.sh` |
 | `send_balloon` | `chat`, `bundle_id`, `app_name`, `url`, optional `adam_id`, `session`, `caption`, `subcaption`, `ld_text`, `live`, `icon_b64`, `breadcrumb`, `reply_to` |
 | `tapback` | `chat`, `target`, `reaction` (`love`, `like`, `dislike`, `laugh`, `emphasize`, `question`, or an emoji), optional `remove` |
 | `typing` | `chat`, `active` |

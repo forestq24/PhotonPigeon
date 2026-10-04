@@ -27,6 +27,31 @@ export const CompletedResult = __t.object("CompletedResult", {
 });
 export type CompletedResult = __Infer<typeof CompletedResult>;
 
+export const ConversationMessage = __t.object("ConversationMessage", {
+  id: __t.string(),
+  owner: __t.identity(),
+  playerId: __t.string(),
+  role: __t.string(),
+  text: __t.string(),
+  at: __t.u64(),
+});
+export type ConversationMessage = __Infer<typeof ConversationMessage>;
+
+export const DirectReply = __t.object("DirectReply", {
+  id: __t.string(),
+  owner: __t.identity(),
+  playerId: __t.string(),
+  kind: __t.string(),
+  ordinal: __t.u32(),
+  memoryEpoch: __t.u64(),
+  prefRevision: __t.u64(),
+  model: __t.string(),
+  personaVersion: __t.string(),
+  fallback: __t.string(),
+  expiresAt: __t.u64(),
+});
+export type DirectReply = __Infer<typeof DirectReply>;
+
 export const GenerationClaim = __t.object("GenerationClaim", {
   token: __t.u64(),
   expiresAt: __t.u64(),
@@ -43,6 +68,24 @@ export const GenerationLease = __t.object("GenerationLease", {
 });
 export type GenerationLease = __Infer<typeof GenerationLease>;
 
+export const InboundText = __t.object("InboundText", {
+  id: __t.string(),
+  owner: __t.identity(),
+  playerId: __t.string(),
+  ordinal: __t.u32(),
+  at: __t.u64(),
+});
+export type InboundText = __Infer<typeof InboundText>;
+
+export const MemoryFact = __t.object("MemoryFact", {
+  id: __t.string(),
+  owner: __t.identity(),
+  playerId: __t.string(),
+  text: __t.string(),
+  at: __t.u64(),
+});
+export type MemoryFact = __Infer<typeof MemoryFact>;
+
 export const ModelConfig = __t.object("ModelConfig", {
   id: __t.u8(),
   url: __t.string(),
@@ -50,11 +93,29 @@ export const ModelConfig = __t.object("ModelConfig", {
 });
 export type ModelConfig = __Infer<typeof ModelConfig>;
 
+export const MyConversation = __t.object("MyConversation", {});
+export type MyConversation = __Infer<typeof MyConversation>;
+
+export const MyDirectReplies = __t.object("MyDirectReplies", {});
+export type MyDirectReplies = __Infer<typeof MyDirectReplies>;
+
 export const MyGames = __t.object("MyGames", {});
 export type MyGames = __Infer<typeof MyGames>;
 
+export const MyImageChoices = __t.object("MyImageChoices", {});
+export type MyImageChoices = __Infer<typeof MyImageChoices>;
+
+export const MyMemoryFacts = __t.object("MyMemoryFacts", {});
+export type MyMemoryFacts = __Infer<typeof MyMemoryFacts>;
+
 export const MyObservations = __t.object("MyObservations", {});
 export type MyObservations = __Infer<typeof MyObservations>;
+
+export const MyOutbox = __t.object("MyOutbox", {});
+export type MyOutbox = __Infer<typeof MyOutbox>;
+
+export const MyPlayers = __t.object("MyPlayers", {});
+export type MyPlayers = __Infer<typeof MyPlayers>;
 
 export const MyProbes = __t.object("MyProbes", {});
 export type MyProbes = __Infer<typeof MyProbes>;
@@ -103,6 +164,20 @@ export const ObservedGame = __t.object("ObservedGame", {
 });
 export type ObservedGame = __Infer<typeof ObservedGame>;
 
+export const PlayerState = __t.object("PlayerState", {
+  key: __t.string(),
+  owner: __t.identity(),
+  playerId: __t.string(),
+  intensity: __t.string(),
+  unsolicited: __t.bool(),
+  memes: __t.bool(),
+  prefRevision: __t.u64(),
+  memoryEpoch: __t.u64(),
+  clearedOrdinal: __t.u32(),
+  latestGameKey: __t.string(),
+});
+export type PlayerState = __Infer<typeof PlayerState>;
+
 export const Reaction = __t.object("Reaction", {
   id: __t.string(),
   owner: __t.identity(),
@@ -124,6 +199,37 @@ export const ReactionContext = __t.object("ReactionContext", {
 });
 export type ReactionContext = __Infer<typeof ReactionContext>;
 
+export const ReactionImage = __t.object("ReactionImage", {
+  id: __t.string(),
+  bucket: __t.string(),
+  fileName: __t.string(),
+  mime: __t.string(),
+  size: __t.u32(),
+  sha256: __t.string(),
+  enabled: __t.bool(),
+  addedAt: __t.u64(),
+});
+export type ReactionImage = __Infer<typeof ReactionImage>;
+
+export const ReactionImageChoice = __t.object("ReactionImageChoice", {
+  id: __t.string(),
+  owner: __t.identity(),
+  playerId: __t.string(),
+  bucket: __t.string(),
+  imageId: __t.string(),
+  at: __t.u64(),
+});
+export type ReactionImageChoice = __Infer<typeof ReactionImageChoice>;
+
+export const ReactionImageData = __t.object("ReactionImageData", {
+  id: __t.string(),
+  data: __t.byteArray(),
+});
+export type ReactionImageData = __Infer<typeof ReactionImageData>;
+
+export const ReactionImages = __t.object("ReactionImages", {});
+export type ReactionImages = __Infer<typeof ReactionImages>;
+
 export const Relationship = __t.object("Relationship", {
   key: __t.string(),
   owner: __t.identity(),
@@ -141,6 +247,34 @@ export const ReplyProbe = __t.object("ReplyProbe", {
   status: __t.string(),
 });
 export type ReplyProbe = __Infer<typeof ReplyProbe>;
+
+export const ResponseOutbox = __t.object("ResponseOutbox", {
+  id: __t.string(),
+  owner: __t.identity(),
+  playerId: __t.string(),
+  kind: __t.string(),
+  text: __t.string(),
+  memoryEpoch: __t.u64(),
+  prefRevision: __t.u64(),
+  createdAt: __t.u64(),
+  expiresAt: __t.u64(),
+  status: __t.string(),
+  token: __t.u64(),
+  leaseExpiresAt: __t.u64(),
+  failures: __t.u32(),
+  retryAt: __t.u64(),
+  bridgeMessageId: __t.string(),
+});
+export type ResponseOutbox = __Infer<typeof ResponseOutbox>;
+
+export const SendClaim = __t.object("SendClaim", {
+  token: __t.u64(),
+  leaseExpiresAt: __t.u64(),
+  playerId: __t.string(),
+  kind: __t.string(),
+  text: __t.string(),
+});
+export type SendClaim = __Infer<typeof SendClaim>;
 
 export const StreamGap = __t.object("StreamGap", {
   eventId: __t.string(),

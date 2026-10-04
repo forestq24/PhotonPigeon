@@ -7,7 +7,7 @@ export async function anthropicReply(options: {
   endpoint?: string; timeoutMs?: number; fallbackResponse?: string;
 }): Promise<{ response: string; fallback: boolean }> {
   try {
-    if (!options.apiKey || !options.model || options.prompt.length > 2000) throw new Error('Missing configuration');
+    if (!options.apiKey || !options.model || options.prompt.length > 4000) throw new Error('Missing configuration');
     const response = await fetch(options.endpoint ?? 'https://api.anthropic.com/v1/messages', {
       method: 'POST', signal: AbortSignal.timeout(options.timeoutMs ?? 10000), redirect: 'error',
       headers: { 'content-type': 'application/json', 'x-api-key': options.apiKey, 'anthropic-version': '2023-06-01',

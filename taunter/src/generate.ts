@@ -9,6 +9,10 @@ const apiKey = process.env.ANTHROPIC_API_KEY;
 if (!apiKey || !process.env.SPACETIME_DATABASE) {
   throw new Error('Configure ANTHROPIC_API_KEY and SPACETIME_DATABASE in the adapter runtime');
 }
+// A different endpoint is accepted only on loopback, for mock-provider tests. Real requests
+// always go to Anthropic.
+const endpoint = process.env.ANTHROPIC_ENDPOINT;
+if (endpoint && !/^http:\/\/127\.0\.0\.1:\d+\/messages$/.test(endpoint)) throw new Error('ANTHROPIC_ENDPOINT may only be a local test endpoint');
 let stopping = false;
 let connection: DbConnection | undefined;
 const shutdown = new AbortController();
@@ -23,10 +27,10 @@ while (!stopping) {
       const timeout = setTimeout(() => reject(new Error('Subscription timeout')), 5000);
       active.subscriptionBuilder().onApplied(() => { clearTimeout(timeout); resolve(); })
         .onError(() => { clearTimeout(timeout); reject(new Error('Subscription failed')); })
-        .subscribe(['SELECT * FROM my_probes', 'SELECT * FROM my_reactions']);
+        .subscribe(['SELECT * FROM my_probes', 'SELECT * FROM my_reactions', 'SELECT * FROM my_direct_replies']);
     });
     const worker = new GenerationWorker(reactionGenerationStore(active), claim => anthropicReply({ apiKey, model: claim.model, prompt: claim.prompt,
-      workspaceId: process.env.ANTHROPIC_WORKSPACE_ID,
+      workspaceId: process.env.ANTHROPIC_WORKSPACE_ID, endpoint,
       timeoutMs: 10000, fallbackResponse: claim.fallbackResponse }));
     console.log('[taunter] generation worker connected; replies are persisted, messaging is disabled');
     while (!stopping && active.isActive) {

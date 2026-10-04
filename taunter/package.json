@@ -10,7 +10,12 @@
     "spike": "tsx spike/spacetime.ts",
     "spike:anthropic": "tsx spike/anthropic.ts",
     "spike:reactions": "tsx spike/reactions.ts",
-    "spike:generation": "tsx spike/generation.ts"
+    "spike:generation": "tsx spike/generation.ts",
+    "deliver": "tsx src/deliver.ts",
+    "inspect": "tsx src/inspect.ts",
+    "spike:conversation": "tsx spike/conversation.ts",
+    "images:sync": "node --experimental-strip-types scripts/sync-reaction-images.ts",
+    "spike:images": "tsx spike/images.ts"
   },
   "dependencies": {
     "spacetimedb": "2.10.2"

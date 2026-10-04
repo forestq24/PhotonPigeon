@@ -12,11 +12,12 @@ This file is the single write-up of the project as of **2026-10-03**. It replace
 | Four in a Row | Working, played live | Five full games against a real iPhone; the bot won all five |
 | 8 Ball | Working, played live once | One full game against a real iPhone; the opponent won |
 | 8 Ball physics (`poolsim/`) | Matches real phones closely | 29 of 30 real strokes reproduced exactly (details below) |
-| Chat, banter, persona | Partially implemented | Private reaction policy and leased generation are locally tested; ordinary-text chat and delivery are pending |
-| Independent conversation foundation (`taunter/`) | Locally tested; live replies pending | Read-only game observation, private Spacetime state, recovery and leased Anthropic generation; [plan](SPACETIME_PERSONALITY_PLAN.md), [setup](taunter/README.md) |
+| Chat, banter, persona (`taunter/`) | Built and verified against mocks; live run started October 4, validation checklist not completed | Game reactions, text conversation with per-player memory and commands, and a send-only delivery worker pass a full mocked suite. On October 4 the daemons ran against the staging database and the bridge accepted nine conversation texts; arrival on the phones has not been recorded. [plan](SPACETIME_PERSONALITY_PLAN.md), [status](taunter/README.md) |
+| Reaction images (`reaction_images/`, `taunter/`) | Stored and chosen in the database; sending is mock-verified, not live | 25 curated images in `winning`, `losing` and `neutral` buckets are stored in the staging database. About one reaction in three gets one, sent after its text. The bridge's `send_image` command is written but needs a rebuild and has never run; [details](taunter/README.md#reaction-images) |
+| Gomoku, Reversi, Checkers, Dots & Boxes, Mancala, Filler | Built and tested against each other; never played on a real phone | Formats come from OpenPigeon's source, not from captures. Each game passes its own rule tests and a bot-versus-bot game through fully encoded cards. The first real game of each is the real test; details below |
 | Other games | Not built | Invites are recorded and ignored |
 
-For the remaining conversation-agent work, see the detailed [implementation handoff in taunter/README.md](taunter/README.md#remaining-conversation-work). It includes the current completion boundary, prioritized milestones, file map, delivery failure handling, test commands and release acceptance criteria.
+The conversation agent's status, commands, delivery rules and test commands are in [taunter/README.md](taunter/README.md). Its one remaining step is controlled live validation, which needs the rebuilt bridge restarted, a runtime Anthropic key and the authorized tester.
 
 ## How it works
 
@@ -46,7 +47,7 @@ poolsim/  pool-sim (C++)
           OpenPigeon's pool physics as a command-line tool
 ```
 
-No LLM is involved in gameplay. Every move comes from a deterministic engine. The separate conversation foundation uses Anthropic Haiku for text generation; one real API request is verified; live text delivery remains pending. Conversational replies will be separate text messages, never part of a game move.
+No LLM is involved in gameplay. Every move comes from a deterministic engine. The separate conversation agent uses Anthropic Haiku for text generation; one real API request is verified, and text delivery is verified against a fake bridge only. Conversational replies are separate text messages, never part of a game move.
 
 ## Repository layout
 
@@ -188,10 +189,39 @@ The physics is not ours. `poolsim/` builds the pool engine from [OpenBubbles/Ope
 
 **Honesty.** The message format lets a sender claim any result. The bot only reports what the engine computed for the strokes it sends, misses and fouls included.
 
+### Board games (`src/games/common/` and one folder each)
+
+Added October 4: Gomoku, Reversi, Checkers, Dots & Boxes, Mancala and Filler. None needs physics. They share two pieces:
+
+- `common/search.ts`: one move chooser for all of them (minimax with alpha-beta pruning, deepened until the time budget runs out). It asks the game whose move it is, so games where a side moves several times in a row work.
+- `common/card.ts`: the envelope around a move. A reply starts from the opponent's fields, claims our slot, bumps `num`, and adds the game's own fields.
+
+Each game folder has one `game.ts`: how to read a card, the rules, how positions are scored, and the fields to send back.
+
+| Game | Wire name | State travels in | Notes |
+|---|---|---|---|
+| Gomoku | `renju` | `map` (the board before the move) and `move` (`row,col,stone`) | 13 x 13. Five or more wins. Stone 2 is player 1 |
+| Reversi | `reversi` | `replay`: board before, moves, board after | When the opponent must pass, the same player's moves share one card |
+| Checkers | `checkers` | `replay`: board before, each hop, board after | `mode` n makes captures mandatory. Kings move one step. No draw rule exists in the app |
+| Dots & Boxes | `dots` | `replay`: board before, lines and boxes of the turn, board after | `size` is dots per side. All lines of a turn share one card |
+| Mancala | `mancala` | `replay`: board before, pit choices, board after | Capture and avalanche modes. Stones carry colour labels |
+| Filler | `fill` | `replay`: board before, colour, board after | The invite carries only `seed`; the starting board is generated from it |
+
+**Where the formats come from.** Not from captures. They were read out of OpenPigeon's game scripts, whose Four in a Row format matches our real captures exactly. Where OpenPigeon embeds sample messages or the rules could be worked by hand (a crowned Checkers piece that keeps jumping, a three-box Dots turn, four Mancala turns, the Filler board for seed 0), the modules reproduce them exactly.
+
+**What is not known until a real game is played:**
+
+- Whether the real app's cards carry the same fields as OpenPigeon's. A card the agent cannot read is logged and not answered.
+- Filler's starting board must match the phone's exactly, because the invite carries only a seed. It matches an independent port of OpenPigeon's generator; it has not been compared with a phone.
+- Whether a real Mancala invite carries its starting board. If it does not, the agent assumes four stones per pit.
+- How the real app delivers the last card of a Dots & Boxes game; OpenPigeon's normal path never sends it.
+
+**The chat agent follows these games too** (added October 4). It reads each card with the same board readers, reports a result only when the board itself is finished, and reports a lead only past a clear margin (discs, pieces, boxes, stones, area; for Gomoku, an unanswered five-in-a-row threat). Cards from games it does not follow, such as Cup Pong, are skipped.
+
 ## Testing
 
-- `npm test` in `pigeonai/`: 16 tests covering both games' rules, the search, and the message builders.
-- Simulated opponents: the agent has been run end to end against stand-in bridges that play Four in a Row and 8 Ball and check every card it sends. These scripts were throwaway and are not in the repo.
+- `npm test` in `pigeonai/`: 25 tests. 16 cover Four in a Row and 8 Ball (rules, search, message builders). 9 cover the board games: the shared search and envelope, each game's rules against worked examples, and two bots playing every game to the end through encoded cards.
+- Simulated opponents: the agent has been run end to end against stand-in bridges that play Four in a Row and 8 Ball and check every card it sends. On October 4 the same was done for the six board games: the real agent process was invited to each and played all six to the end. These scripts were throwaway and are not in the repo.
 - `spike/pool-fidelity.ts`: replays every captured 8 Ball turn through the engine and reports how far each ball lands from where the phone put it.
 - `logs/fixtures/`: every GamePigeon card from an allowed sender, and every card the bot sends, is saved decoded. Cards the account owner sends from their own phone are saved as `own`. These contain player IDs, so the directory is gitignored.
 
@@ -205,7 +235,8 @@ The physics is not ours. `poolsim/` builds the pool engine from [OpenBubbles/Ope
 
 ## Known gaps
 
-- **No live chat.** Pigeon reaction policy and leased text generation are implemented separately in `taunter/`; ordinary-text intake, conversational memory/preferences and text delivery are pending. Gameplay remains deterministic.
+- **Live chat is not validated.** The conversation agent in `taunter/` passes its mocked end-to-end suite and has been run against the real bridge (nine texts accepted on October 4), but the live validation checklist has not been worked through.
+- **Reaction images have never reached a phone.** Sending passes against a fake bridge; the real bridge's `send_image` command has not been compiled or run. Gameplay remains deterministic.
 - **Games are forgotten on restart.** Sessions live in memory.
 - **8 Ball: ball in hand is unused.** After an opponent's foul the bot shoots from the center spot.
 - **8 Ball: ball textures.** Moved balls keep their old rotation values, so the numbers may face the wrong way. Cosmetic.
@@ -219,7 +250,8 @@ The physics is not ours. `poolsim/` builds the pool engine from [OpenBubbles/Ope
 
 - **9 Ball and 8 Ball+** use the same pool engine; they need rules and racks.
 - **Mini Golf, Shuffleboard, Knockout** have their own C++ engines in OpenPigeon that could be wrapped the same way.
-- **Chess, Checkers, Gomoku, Reversi, Mancala, Dots & Boxes** need no physics. OpenPigeon has format code for each to use as a reference.
+- **Chess, Sea Battle, Crazy 8 and 20 Questions** are the turn-based games still missing. Chess needs a full rules engine; Sea Battle and Crazy 8 have hidden information.
+- **Trash talk for further games** follows automatically once the chat agent can read their boards (`taunter/src/assessment.ts`).
 - **Word Hunt and Anagrams** have a different shape: the invite fixes the letters, each player sends one round, and a final card carries both scores. A bot round should be capped at what a person could plausibly find.
 - **Cup Pong, Darts, Archery, Basketball, Tanks** are Godot scenes in OpenPigeon, not standalone engines. Running them would be a separate project.
 

@@ -1,6 +1,6 @@
 # pigeonai
 
-The PhotonPigeon agent: it plays Four in a Row and 8 Ball on GamePigeon over `pigeon-bridge`. The project write-up, including setup, is in the top-level `README.md`.
+The PhotonPigeon agent: it plays Four in a Row, 8 Ball, Gomoku, Reversi, Checkers, Dots & Boxes, Mancala and Filler on GamePigeon over `pigeon-bridge`. The last six are built from OpenPigeon's source and have not yet been played against a real phone. The project write-up, including setup, is in the top-level `README.md`.
 
 ## Run
 
@@ -27,6 +27,7 @@ No `npm install` is needed for any of this. The code runs directly on Node 22.18
 - `src/transport/bridge.ts`: client for the bridge socket.
 - `src/gamepigeon/vendor/`: GamePigeon URL codec (MIT, from time-attack/OpenPigeon).
 - `src/games/connect4/`, `src/games/pool/`: one folder per game.
+- `src/games/common/`: the search and reply envelope shared by the board games. `src/games/registry.ts` lists them; `gomoku/`, `reversi/`, `checkers/`, `dots/`, `mancala/` and `filler/` each hold one `game.ts`. To add a game, write a `CardGame` and add it to the registry.
 - `spike/`: `bridge-probe.ts` tests the transport alone; `pool-fidelity.ts` checks the physics.
 - `logs/fixtures/`: every card seen or sent, decoded. Gitignored; contains player IDs.
 

@@ -6,11 +6,23 @@
 import { type Infer as __Infer } from "spacetimedb";
 
 // Import all procedure arg schemas
+import * as BeginDispatchProcedure from "../begin_dispatch_procedure";
 import * as ClaimExternalProbeProcedure from "../claim_external_probe_procedure";
+import * as ClaimImageSendProcedure from "../claim_image_send_procedure";
+import * as ClaimSendProcedure from "../claim_send_procedure";
+import * as FetchReactionImageProcedure from "../fetch_reaction_image_procedure";
 import * as GenerateProbeProcedure from "../generate_probe_procedure";
 
+export type BeginDispatchArgs = __Infer<typeof BeginDispatchProcedure.params>;
+export type BeginDispatchResult = __Infer<typeof BeginDispatchProcedure.returnType>;
 export type ClaimExternalProbeArgs = __Infer<typeof ClaimExternalProbeProcedure.params>;
 export type ClaimExternalProbeResult = __Infer<typeof ClaimExternalProbeProcedure.returnType>;
+export type ClaimImageSendArgs = __Infer<typeof ClaimImageSendProcedure.params>;
+export type ClaimImageSendResult = __Infer<typeof ClaimImageSendProcedure.returnType>;
+export type ClaimSendArgs = __Infer<typeof ClaimSendProcedure.params>;
+export type ClaimSendResult = __Infer<typeof ClaimSendProcedure.returnType>;
+export type FetchReactionImageArgs = __Infer<typeof FetchReactionImageProcedure.params>;
+export type FetchReactionImageResult = __Infer<typeof FetchReactionImageProcedure.returnType>;
 export type GenerateProbeArgs = __Infer<typeof GenerateProbeProcedure.params>;
 export type GenerateProbeResult = __Infer<typeof GenerateProbeProcedure.returnType>;
 

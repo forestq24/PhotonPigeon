@@ -1,6 +1,6 @@
 # Pigeon: independent gameplay and taunting brains
 
-Status: observation/recovery, personality policy and leased automatic generation implemented locally; ordinary-text conversation and live delivery remain planned. Updated October 4, 2026.
+Status: the text-only baseline is implemented and verified against mocks: observation, personality policy, leased generation, ordinary-text conversation with per-player preferences and memory, and an outbox with a send-only delivery worker. Live validation against the real bridge and a phone has not been run. Updated October 4, 2026.
 
 ## Implementation checkpoint: gaps 1–4
 
@@ -19,7 +19,11 @@ The local server rejects procedure HTTP requests to loopback/private addresses. 
 
 Spacetime now owns a versioned Pigeon voice, Haiku model ID, per-player/game-type completed history, three-loss and rolling-five milestones, one-minute per-player cooldown, and persisted wording selection that avoids recent repetition. Reaction jobs expose authorized metadata and prompts to the Mac. Verified human wins get gracious congratulations; mid-game remarks wait for acknowledged bot cards and retain the assessment's caveats. Old uploads update history without triggering belated messages. Newer turns, invalidated results and gaps cancel unsent jobs; generation claims/completions reject expired reactions. Eleven unit tests and local backend integration pass. No game engine was changed.
 
-Ordinary-text intake and conversational memory/preferences remain unimplemented. The separate text-send outbox/delivery worker and uncertain-send handling are still required before live delivery.
+### Conversation and delivery implemented October 4
+
+Ordinary-text intake, per-player preferences and bounded memory, deterministic commands, Haiku direct replies, the private response outbox and a delivery worker that can only `send_text` are implemented in `taunter/`. Decisions made along the way: newest text wins (an unsent reply to an earlier text is cancelled); a final result may replace an undispatched mid-game remark inside the cooldown but never adds a second unsolicited text; after the dispatch marker every unclear ending is `uncertain` and is never resent automatically; `clear memory` keeps game results and preferences. `remember <fact>` and `memory` were added so explicit memory can be written and inspected.
+
+Verification: 30 unit tests; the three earlier integration suites; a new end-to-end suite (`npm run spike:conversation`) that runs the real observer, generator and delivery daemons against a fake bridge, the real local module and a mock model with five synthetic players; and state persistence through a full server restart. All mock-level. No conversational iMessage has been sent to a real person, and the delivery daemon has only been run against the fake bridge. The remaining gate is controlled live validation; its required inputs are listed in the handoff.
 
 ### Generation reliability implemented October 4
 

@@ -10,9 +10,14 @@ export interface GenerationStore {
 }
 export type ReplyProvider = (claim: GenerationClaim) => Promise<{ response: string; fallback: boolean }>;
 
+/**
+ * Jobs this worker may generate: game reactions and replies to a player's own text. Synthetic
+ * probes are ignored. Deterministic command acknowledgements arrive already `ready`, so the
+ * worker's pending/generating filter skips them without calling the model.
+ */
 export function reactionGenerationStore(connection: DbConnection): GenerationStore {
   return {
-    candidates: () => [...connection.db.myProbes.iter()].filter(row => connection.db.myReactions.id.find(row.id)),
+    candidates: () => [...connection.db.myProbes.iter()].filter(row => connection.db.myReactions.id.find(row.id) || connection.db.myDirectReplies.id.find(row.id)),
     claim: id => connection.procedures.claimExternalProbe({ id }),
     complete: result => connection.reducers.completeExternalProbe(result),
   };

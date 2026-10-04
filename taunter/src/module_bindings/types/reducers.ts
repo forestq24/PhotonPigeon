@@ -11,14 +11,28 @@ import ConfigureModelReducer from "../configure_model_reducer";
 import EnqueueProbeReducer from "../enqueue_probe_reducer";
 import GrantWorkerReducer from "../grant_worker_reducer";
 import IngestObservationReducer from "../ingest_observation_reducer";
+import IngestUserTextReducer from "../ingest_user_text_reducer";
 import MarkGapReducer from "../mark_gap_reducer";
+import RecordSendResultReducer from "../record_send_result_reducer";
+import RegisterReactionImageReducer from "../register_reaction_image_reducer";
+import RemoveReactionImageReducer from "../remove_reaction_image_reducer";
+import ResolveSendReducer from "../resolve_send_reducer";
 import RevokeWorkerReducer from "../revoke_worker_reducer";
+import SetReactionImageEnabledReducer from "../set_reaction_image_enabled_reducer";
+import SweepOutboxReducer from "../sweep_outbox_reducer";
 
 export type CompleteExternalProbeParams = __Infer<typeof CompleteExternalProbeReducer>;
 export type ConfigureModelParams = __Infer<typeof ConfigureModelReducer>;
 export type EnqueueProbeParams = __Infer<typeof EnqueueProbeReducer>;
 export type GrantWorkerParams = __Infer<typeof GrantWorkerReducer>;
 export type IngestObservationParams = __Infer<typeof IngestObservationReducer>;
+export type IngestUserTextParams = __Infer<typeof IngestUserTextReducer>;
 export type MarkGapParams = __Infer<typeof MarkGapReducer>;
+export type RecordSendResultParams = __Infer<typeof RecordSendResultReducer>;
+export type RegisterReactionImageParams = __Infer<typeof RegisterReactionImageReducer>;
+export type RemoveReactionImageParams = __Infer<typeof RemoveReactionImageReducer>;
+export type ResolveSendParams = __Infer<typeof ResolveSendReducer>;
 export type RevokeWorkerParams = __Infer<typeof RevokeWorkerReducer>;
+export type SetReactionImageEnabledParams = __Infer<typeof SetReactionImageEnabledReducer>;
+export type SweepOutboxParams = __Infer<typeof SweepOutboxReducer>;
 

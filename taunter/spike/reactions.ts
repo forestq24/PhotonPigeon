@@ -37,16 +37,32 @@ try {
   await connection.reducers.ingestObservation({ observed: facts(a, 'five-4', 'human_loss'), live: true });
   assert.equal(Number(connection.db.myResults.count()), 5, 'Duplicate results must not inflate history');
   assert.equal(Number(connection.db.myReactions.count()), 1, 'Retry must not reroll wording');
+  await connection.reducers.ingestObservation({ observed: { ...facts(a, 'cooldown-midgame', 'unknown', 2), terminal: false, eligibleResult: false, advantage: 'bot' }, live: true });
+  assert.equal(Number(connection.db.myReactions.count()), 1, 'Cooldown holds back mid-game remarks, per player');
   await connection.reducers.ingestObservation({ observed: facts(a, 'cooldown', 'human_win'), live: true });
-  assert.equal(Number(connection.db.myReactions.count()), 1, 'Cooldown applies per player');
-  for (let i = 0; i < 3; i++) await connection.reducers.ingestObservation({ observed: facts(b, `streak-${i}`, 'human_loss'), live: i === 2 });
   await waitFor(() => Number(connection.db.myReactions.count()) === 2);
+  assert.ok([...connection.db.myReactions.iter()].some(r => r.playerId === a && r.reason === 'human_win'), 'A verified final result is answered even inside the cooldown');
+  await connection.reducers.ingestObservation({ observed: facts(a, 'cooldown', 'human_win'), live: true });
+  assert.equal(Number(connection.db.myReactions.count()), 2, 'One reaction per result');
+  for (let i = 0; i < 3; i++) await connection.reducers.ingestObservation({ observed: facts(b, `streak-${i}`, 'human_loss'), live: i === 2 });
+  await waitFor(() => Number(connection.db.myReactions.count()) === 3);
   assert.equal([...connection.db.myReactions.iter()].find(r => r.playerId === b)!.reason, 'three_losses');
   assert.equal(Number(outsider.db.myReactions.count()), 0);
   assert.equal(Number(outsider.db.myResults.count()), 0);
   await connection.reducers.ingestObservation({ observed: facts(c, 'pool-only', 'human_loss', 1, 'pool'), live: true });
-  await waitFor(() => Number(connection.db.myReactions.count()) === 3);
+  await waitFor(() => Number(connection.db.myReactions.count()) === 4);
   assert.equal([...connection.db.myReactions.iter()].find(r => r.playerId === c)!.reason, 'human_loss', 'History is isolated by player and game type');
+  // A board game: banter on a quiet bot card, then the verified result replaces it while it is unsent.
+  const d = 'd'.repeat(64);
+  const quiet = { ...facts(d, 'banter', 'unknown', 4, 'renju'), terminal: false, eligibleResult: false };
+  await connection.reducers.ingestObservation({ observed: quiet, live: true });
+  await waitFor(() => Number(connection.db.myReactions.count()) === 5);
+  const banter = [...connection.db.myReactions.iter()].find(r => r.playerId === d)!;
+  assert.deepEqual([banter.reason, banter.gameKind], ['banter', 'renju']);
+  assert.match(connection.db.myProbes.id.find(banter.id)!.prompt, /Game: gomoku/);
+  await connection.reducers.ingestObservation({ observed: facts(d, 'banter', 'human_win', 5, 'renju'), live: true });
+  await waitFor(() => Number(connection.db.myReactions.count()) === 6 && connection.db.myProbes.id.find(banter.id)?.status === 'cancelled');
+  await assert.rejects(connection.reducers.ingestObservation({ observed: facts(d, 'unknown-game', 'unknown', 1, 'beer'), live: true }), 'Games the agent does not follow are refused');
   const claim = await connection.procedures.claimExternalProbe({ id: rolling.id });
   assert.ok(claim);
   await connection.reducers.ingestObservation({ observed: { ...facts(a, 'five-4', 'unknown', 2), reliable: false, complete: false, eligibleResult: false }, live: true });
@@ -55,5 +71,5 @@ try {
   assert.equal([...connection.db.myResults.iter()].find(r => r.gameKey === rolling.gameKey)!.valid, false);
   await connection.reducers.markGap({ eventId: `${suffix}:gap`, reason: 'Synthetic missed events' });
   await waitFor(() => [...connection.db.myProbes.iter()].every(r => r.status === 'cancelled'));
-  console.log('PASS: rolling-five/streak policy, player isolation, cooldown, persisted wording, deduplication, private views, corrected-result and gap cancellation. No model calls or messages.');
+  console.log('PASS: rolling-five/streak policy, player isolation, cooldown and final results inside it, persisted wording, deduplication, private views, corrected-result and gap cancellation. No model calls or messages.');
 } finally { connection.disconnect(); outsider.disconnect(); }

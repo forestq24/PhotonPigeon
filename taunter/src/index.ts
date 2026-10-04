@@ -1,4 +1,4 @@
-/** Observation only: does not generate replies or send any iMessages. */
+/** Observation only: records allowlisted game cards and human text. Does not generate replies or send any iMessages. */
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { BridgeObserver, type BridgeRecord } from './bridge-observer.ts';
@@ -55,8 +55,9 @@ while (!stopping) {
         try {
           if (store && !store.isActive) { store.disconnect(); store = undefined; uploaded = 0; }
           store ??= await openStore();
-          if (uploaded !== state.records.length) await syncRecords(store, state.records);
-          uploaded = state.records.length;
+          const total = state.records.length;
+          if (uploaded !== total) await syncRecords(store, state.records, uploaded);
+          uploaded = total;
         }
         catch { console.error('[taunter] database unavailable; observations retained locally'); }
       }

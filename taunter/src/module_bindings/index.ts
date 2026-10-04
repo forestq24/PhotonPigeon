@@ -39,24 +39,56 @@ import ConfigureModelReducer from "./configure_model_reducer";
 import EnqueueProbeReducer from "./enqueue_probe_reducer";
 import GrantWorkerReducer from "./grant_worker_reducer";
 import IngestObservationReducer from "./ingest_observation_reducer";
+import IngestUserTextReducer from "./ingest_user_text_reducer";
 import MarkGapReducer from "./mark_gap_reducer";
+import RecordSendResultReducer from "./record_send_result_reducer";
+import RegisterReactionImageReducer from "./register_reaction_image_reducer";
+import RemoveReactionImageReducer from "./remove_reaction_image_reducer";
+import ResolveSendReducer from "./resolve_send_reducer";
 import RevokeWorkerReducer from "./revoke_worker_reducer";
+import SetReactionImageEnabledReducer from "./set_reaction_image_enabled_reducer";
+import SweepOutboxReducer from "./sweep_outbox_reducer";
 
 // Import all procedure arg schemas
+import * as BeginDispatchProcedure from "./begin_dispatch_procedure";
 import * as ClaimExternalProbeProcedure from "./claim_external_probe_procedure";
+import * as ClaimImageSendProcedure from "./claim_image_send_procedure";
+import * as ClaimSendProcedure from "./claim_send_procedure";
+import * as FetchReactionImageProcedure from "./fetch_reaction_image_procedure";
 import * as GenerateProbeProcedure from "./generate_probe_procedure";
 
 // Import all table schema definitions
+import MyConversationRow from "./my_conversation_table";
+import MyDirectRepliesRow from "./my_direct_replies_table";
 import MyGamesRow from "./my_games_table";
+import MyImageChoicesRow from "./my_image_choices_table";
+import MyMemoryFactsRow from "./my_memory_facts_table";
 import MyObservationsRow from "./my_observations_table";
+import MyOutboxRow from "./my_outbox_table";
+import MyPlayersRow from "./my_players_table";
 import MyProbesRow from "./my_probes_table";
 import MyReactionsRow from "./my_reactions_table";
 import MyResultsRow from "./my_results_table";
+import ReactionImagesRow from "./reaction_images_table";
 
 /** Type-only namespace exports for generated type groups. */
 
 /** The schema information for all tables in this module. This is defined the same was as the tables would have been defined in the server. */
 const tablesSchema = __schema({
+  myConversation: __table({
+    name: 'my_conversation',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, MyConversationRow),
+  myDirectReplies: __table({
+    name: 'my_direct_replies',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, MyDirectRepliesRow),
   myGames: __table({
     name: 'my_games',
     indexes: [
@@ -64,6 +96,20 @@ const tablesSchema = __schema({
     constraints: [
     ],
   }, MyGamesRow),
+  myImageChoices: __table({
+    name: 'my_image_choices',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, MyImageChoicesRow),
+  myMemoryFacts: __table({
+    name: 'my_memory_facts',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, MyMemoryFactsRow),
   myObservations: __table({
     name: 'my_observations',
     indexes: [
@@ -71,6 +117,20 @@ const tablesSchema = __schema({
     constraints: [
     ],
   }, MyObservationsRow),
+  myOutbox: __table({
+    name: 'my_outbox',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, MyOutboxRow),
+  myPlayers: __table({
+    name: 'my_players',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, MyPlayersRow),
   myProbes: __table({
     name: 'my_probes',
     indexes: [
@@ -92,6 +152,13 @@ const tablesSchema = __schema({
     constraints: [
     ],
   }, MyResultsRow),
+  reactionImages: __table({
+    name: 'reaction_images',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, ReactionImagesRow),
 });
 
 /** The schema information for all reducers in this module. This is defined the same way as the reducers would have been defined in the server, except the body of the reducer is omitted in code generation. */
@@ -101,13 +168,24 @@ const reducersSchema = __reducers(
   __reducerSchema("enqueue_probe", EnqueueProbeReducer),
   __reducerSchema("grant_worker", GrantWorkerReducer),
   __reducerSchema("ingest_observation", IngestObservationReducer),
+  __reducerSchema("ingest_user_text", IngestUserTextReducer),
   __reducerSchema("mark_gap", MarkGapReducer),
+  __reducerSchema("record_send_result", RecordSendResultReducer),
+  __reducerSchema("register_reaction_image", RegisterReactionImageReducer),
+  __reducerSchema("remove_reaction_image", RemoveReactionImageReducer),
+  __reducerSchema("resolve_send", ResolveSendReducer),
   __reducerSchema("revoke_worker", RevokeWorkerReducer),
+  __reducerSchema("set_reaction_image_enabled", SetReactionImageEnabledReducer),
+  __reducerSchema("sweep_outbox", SweepOutboxReducer),
 );
 
 /** The schema information for all procedures in this module. This is defined the same way as the procedures would have been defined in the server. */
 const proceduresSchema = __procedures(
+  __procedureSchema("begin_dispatch", BeginDispatchProcedure.params, BeginDispatchProcedure.returnType),
   __procedureSchema("claim_external_probe", ClaimExternalProbeProcedure.params, ClaimExternalProbeProcedure.returnType),
+  __procedureSchema("claim_image_send", ClaimImageSendProcedure.params, ClaimImageSendProcedure.returnType),
+  __procedureSchema("claim_send", ClaimSendProcedure.params, ClaimSendProcedure.returnType),
+  __procedureSchema("fetch_reaction_image", FetchReactionImageProcedure.params, FetchReactionImageProcedure.returnType),
   __procedureSchema("generate_probe", GenerateProbeProcedure.params, GenerateProbeProcedure.returnType),
 );
 
