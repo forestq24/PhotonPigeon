@@ -5,4 +5,4 @@ url = "https://mcp.excalidraw.com/mcp"
 url = "https://api.graphify.com/v1/mcp"
 
 [mcp_servers.graphify.http_headers]
-Authorization = "Bearer gfy_mcp_wOXkqyvgDVlbao28oD9P_McXmoVKcg_5VIRexOnyI5U"
+"
